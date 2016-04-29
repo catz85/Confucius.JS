@@ -72,12 +72,6 @@ var currentGame;
 var globalInfo = {};
 
 /**
- * Обмены, находящиеся в очереди
- * @type {{}}
- */
-var queuedTrades = {};
-
-/**
  * Выделил все операции с маркетом в отдельный объект
  * @type {MarketHelper}
  */
@@ -94,12 +88,7 @@ function main() {
     connectToDB(function (database) {
         db = database;
         initInfo(function () {
-            initQueue(function () {
-                updateQueue(function () {
-                    auth();
-                });
-            });
-
+            auth();
         });
     });
 }
@@ -126,26 +115,6 @@ function initInfo(callback) {
 }
 
 /**
- * Загружаем очередь обменоы из базы данных
- * @param callback функция обратного вызова
- */
-function initQueue(callback) {
-    db.collection("queue").find().toArray(function (err, items) {
-        if (err) {
-            logger.error(err.stack || err);
-            terminate();
-        } else {
-            async.forEachOfSeries(items, function (data, index, cb) {
-                queuedTrades[data.offerID] = data.items;
-                cb();
-            }, function () {
-                callback();
-            });
-        }
-    });
-}
-
-/**
  * Загружаем информацию об игре
  * @param callback функция обратного вызова
  */
@@ -155,7 +124,6 @@ function initGame(callback) {
             logger.error(err.stack || err);
             terminate();
         } else {
-            console.log(items);
             if (items.length > 0) {
                 var gameData = items[0];
                 currentGame = new Game(globalInfo["current_game"]);
@@ -163,7 +131,6 @@ function initGame(callback) {
                     i.cost = (i.cost * 100).toFixed(0);
                     c();
                 }, function () {
-                    console.log("rrrr");
                     currentGame.resume(gameData.start_time, gameData.bank, gameData.items, gameData.winner, gameData.float, gameData.hash, gameData.state);
                     callback();
                 });
@@ -202,7 +169,7 @@ function auth() {
 
     steamClient.logOn(logOnOptions);
 }
-
+//      "76561198165021961"
 
 /**
  * Коннектим базу данных
@@ -280,252 +247,155 @@ steamClient.on('webSession', function (sessionID, cookies) {
             return;
         }
         logger.info("Получен API key: " + tradeManager.apiKey);
-    });
-    steamCommunity.setCookies(cookies);
-    steamCommunity.chatLogon();
-    steamCommunity.startConfirmationChecker(30000, config["logOnOptions"]["identitySecret"]);
+        steamCommunity.setCookies(cookies);
+        steamCommunity.chatLogon();
+        steamCommunity.startConfirmationChecker(30000, config["logOnOptions"]["identitySecret"]);
 
-    marketHelper = new MarketHelper();
-    initGame(function () {
-
-        tradeManager.on('newOffer', function (offer) {
-            if (globalInfo["trading"] === true) {
-                /**
-                 * Если новый обмен не активен или залагал,
-                 * пропускаем его
-                 */
-                getToken(offer.partner.getSteamID64(), function (token) {
-                    if (token) {
-                        if (offer.state === 2 && !offer._isGlitched()) {
-                            //socket.emit("event.process_offer", {steamid: offer.partner.getSteamID64()});
-                            getSteamUser(offer.partner.getSteamID64(), function (user) {
-                                notifyAdmins("Получено предложение об обмене #" + offer.id + " от " + user.name, true);
-                                /**
-                                 * Удостоверимся, что пользователь только вносит предметы
-                                 */
-                                if (offer.itemsToGive.length <= 0) {
-                                    /**
-                                     * Проверим, не скрыт ли профиль
-                                     */
-                                    if (user.privacyState === "public") {
-
-                                        /**
-                                         * Обрабатываем предметы
-                                         * @see {#processItems}
-                                         */
-                                        processItems(offer, function (items, totalCost, appIDMatch, marketError) {
-                                            console.log(items + " " + totalCost);
-                                            /**
-                                             * Удостоверимся, что все предметы из нужной игры
-                                             */
-                                            if (appIDMatch) {
-                                                /**
-                                                 * Проверяем наличие других ошибок
-                                                 * @see {#processItems}
-                                                 */
-                                                if (!marketError) {
-                                                    /**
-                                                     * Превосходит ли стоимость предметов минимальную ставку
-                                                     */
-                                                    if (totalCost >= Number(globalInfo["min_bet"]) * 100) {
-                                                        /**
-                                                         * Удостоверимся, что число предметов за один обмен
-                                                         * не превосходит максимальное разрешенное
-                                                         */
-                                                        if (items.length <= globalInfo["max_items_per_trade"]) {
-                                                            /**
-                                                             * Проверяем, не станет ли общее число предметов в игре
-                                                             * больше максимального
-                                                             */
-                                                            if (items.length + currentGame.items.length <= globalInfo["max_items"]) {
-                                                                /**
-                                                                 * Проверим, не превышает кол-во предметов от данного пользователя
-                                                                 * максимальное разрешенное
-                                                                 */
-                                                                if (!currentGame.activeBetters || !currentGame.activeBetters[user.steamID.getSteamID64()] || currentGame.activeBetters[user.steamID.getSteamID64()].count + items.length <= globalInfo["max_items_per_user"]) {
-                                                                    acceptOffer(offer, function (newItems) {
-                                                                        /**
-                                                                         * Обязательно проверяем подтверждения через
-                                                                         * мобильный аутентификатор
-                                                                         */
-                                                                        steamCommunity.checkConfirmations();
-                                                                        //socket.emit("event.process_offer.success", {steamid: user.steamID.getSteamID64()});
-                                                                        notifyAdmins("Предложение #" + offer.id + " принято", true);
-
-                                                                        /**
-                                                                         * Добавляем предметы в игру
-                                                                         */
-
-                                                                        addItemsToGame(newItems, totalCost, function () {
-                                                                            currentGame.updateGame(function () {
-                                                                                if (currentGame.state !== "waiting") {
-                                                                                    notifyAdmins("Таймер пошел");
-                                                                                }
-                                                                            });
-                                                                        });
-
-                                                                    });
-                                                                } else {
-                                                                    declineOffer(offer, "кол-во предметов от одного пользователя не должно превышать " + globalInfo["max_items_per_user"], function () {
-                                                                        //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "too_many_items_from_user"});
-                                                                    });
-                                                                }
-                                                            } else {
-                                                                declineOffer(offer, "общее кол-во предметов не должно превышать " + globalInfo["max_items"], function () {
-                                                                    //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "too_many_items"});
-                                                                });
-                                                            }
-                                                        } else {
-                                                            declineOffer(offer, "обмен содержит больше " + globalInfo["max_items_per_trade"] + "предметов", function () {
-                                                                //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "too_many_items_in_trade"});
-                                                            });
-                                                        }
-                                                    } else {
-                                                        declineOffer(offer, "ставка меньше минимальной", function () {
-                                                            //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "low_bet"});
-                                                        });
-                                                    }
-                                                } else {
-                                                    declineOffer(offer, marketError.message, function () {
-                                                        //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: marketError.reason});
-                                                    });
-                                                }
-                                            } else {
-                                                declineOffer(offer, "обмен содержит предметы из других игр", function () {
-                                                    //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "items_to_give"});
-                                                });
-                                            }
-                                        });
-
-                                    } else {
-                                        declineOffer(offer, "профиль пользователя скрыт", function () {
-                                            //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "private_profile"});
-                                        });
-                                    }
-                                } else {
-                                    declineOffer(offer, "попытка вывести предметы", function () {
-                                        //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "items_to_give"});
-                                    });
-                                }
-                            });
-                        } else {
-                            notifyAdmins("Найдено недействительное предложение об обмене (#" + offer.id + "), игнорирую", true);
-                        }
-                    } else {
-                        declineOffer(offer, "у пользователя отсутствует трейд-ссылка", function () {
-                            //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "no_trade_link"});
-                        });
-                    }
+        marketHelper = new MarketHelper(function () {
+            initGame(function () {
+                tradeManager.on('newOffer', function (offer) {
+                    handleTradeOffer(offer);
                 });
-            }
-        });
-
-        /**
-         * Обрабатываем изменения в предложениях обмена
-         */
-        tradeManager.on('receivedOfferChanged', function (offer, oldState) {
-            if (queuedTrades[offer.id] && (offer.state !== TradeOfferManager.ETradeOfferState.Active || oldState === TradeOfferManager.ETradeOfferState.Active)) {
-                notifyAdmins("Обмен #" + offer.id + " больше не активен");
-                notifyAdmins("Его текущее состояние: " + TradeOfferManager.getStateName(offer.state));
-                removeTradeFromQueue(offer.id, function () {
-                });
-            }
+            });
         });
     });
+
+
 });
-
-/**
- * Добавляет обмен в очередь
- * @param offerID идентификатор обмена
- * @param items массив с предметами
- * @param callback функция обратного вызова
- */
-function sendTradeToQueue(offerID, items, callback) {
-    var itemIDs = [];
-    async.forEachOfSeries(items, function (item, key, cb) {
-        itemIDs.push(item.id);
-        cb();
-    }, function () {
-        db.collection("queue").insertOne({offerID: offerID, items: itemIDs}, {w: 1}, function (err, result) {
-            if (err) {
-                logger.error("Не удалось добавить обмен в очередь");
-                logger.error(err.stack || err);
-                logger.error("Следующая попытка через 1.5с");
-                setTimeout(function () {
-                    sendTradeToQueue(offerID, items, callback);
-                }, 1500);
-            } else {
-                queuedTrades[offerID] = itemIDs;
-                logger.info("Обмен #" + offerID + " успешно добавлен в очередь");
-                callback();
-            }
-        });
-    });
-}
-
-/**
- * Убирает принятые обмены из очереди
- * @param callback функция обратного вызова
- */
-function updateQueue(callback) {
-    async.forEachOfSeries(queuedTrades, function (data, key, callbackfunc) {
-        tradeManager.getOffer(key, function (err, offer) {
-            if (err) {
-                logger.error("Не удалось получить обмен #" + key);
-                logger.error(err.stack || err);
-                callbackfunc();
-            } else {
-                if (offer.state !== 2) {
-                    removeTradeFromQueue(key, function () {
-                        callbackfunc();
-                    });
-                } else {
-                    callbackfunc();
-                }
-            }
-        });
-    }, function () {
-        callback();
-    });
-}
-
-/**
- * Удаляет обмен из очереди
- * @param offerID идентификатор обмена
- * @param callback функция обратного вызова
- */
-function removeTradeFromQueue(offerID, callback) {
-    db.collection("queue").removeOne({offerID: offerID}, {w: 1}, function (err, result) {
-        if (err) {
-            logger.error("Не удалось убрать обмен из очереди");
-            logger.error(err.stack || err);
-            logger.error("Следующая попытка через 1.5с");
-            setTimeout(function () {
-                removeTradeFromQueue(offerID, callback);
-            }, 1500);
-        } else {
-            delete queuedTrades[offerID];
-            logger.info("Обмен #" + offerID + " успешно удален из очереди");
-            callback();
-        }
-    });
-}
-
-/**
- * Полный список предметов, находящихся в очереди
- * @returns {Array}
- */
-function getQueuedItems() {
-    var items = [];
-    Object.keys(queuedTrades).forEach(function (key, index, array) {
-        items = items.concat(queuedTrades[key]);
-    });
-    return items;
-}
 
 /**
  * Обрабатываем обмен
  */
+function handleTradeOffer(offer) {
+    if (globalInfo["trading"] === true) {
+        /**
+         * Если новый обмен не активен или залагал,
+         * пропускаем его
+         */
+        getToken(offer.partner.getSteamID64(), function (token) {
+            if (token) {
+                if (offer.state === 2 && !offer._isGlitched()) {
+                    //socket.emit("event.process_offer", {steamid: offer.partner.getSteamID64()});
+                    getSteamUser(offer.partner.getSteamID64(), function (user) {
+                        notifyAdmins("Получено предложение об обмене #" + offer.id + " от " + user.name, true);
+                        /**
+                         * Удостоверимся, что пользователь только вносит предметы
+                         */
+                        if (offer.itemsToGive.length <= 0) {
+                            /**
+                             * Проверим, не скрыт ли профиль
+                             */
+                            if (user.privacyState === "public") {
+
+                                /**
+                                 * Обрабатываем предметы
+                                 * @see {#processItems}
+                                 */
+                                processItems(offer, function (items, totalCost, appIDMatch, marketError) {
+                                    /**
+                                     * Удостоверимся, что все предметы из нужной игры
+                                     */
+                                    if (appIDMatch) {
+                                        /**
+                                         * Проверяем наличие других ошибок
+                                         * @see {#processItems}
+                                         */
+                                        if (!marketError) {
+                                            /**
+                                             * Превосходит ли стоимость предметов минимальную ставку
+                                             */
+                                            if (totalCost >= Number(globalInfo["min_bet"]) * 100) {
+                                                /**
+                                                 * Удостоверимся, что число предметов за один обмен
+                                                 * не превосходит максимальное разрешенное
+                                                 */
+                                                if (items.length <= globalInfo["max_items_per_trade"]) {
+                                                    /**
+                                                     * Проверяем, не станет ли общее число предметов в игре
+                                                     * больше максимального
+                                                     */
+                                                    if (items.length + currentGame.items.length <= globalInfo["max_items"]) {
+                                                        /**
+                                                         * Проверим, не превышает кол-во предметов от данного пользователя
+                                                         * максимальное разрешенное
+                                                         */
+                                                        if (!currentGame.activeBetters || !currentGame.activeBetters[user.steamID.getSteamID64()] || currentGame.activeBetters[user.steamID.getSteamID64()].count + items.length <= globalInfo["max_items_per_user"]) {
+                                                            acceptOffer(offer, function (newItems) {
+                                                                /**
+                                                                 * Обязательно проверяем подтверждения через
+                                                                 * мобильный аутентификатор
+                                                                 */
+                                                                steamCommunity.checkConfirmations();
+                                                                //socket.emit("event.process_offer.success", {steamid: user.steamID.getSteamID64()});
+                                                                notifyAdmins("Предложение #" + offer.id + " принято", true);
+
+                                                                /**
+                                                                 * Добавляем предметы в игру
+                                                                 */
+
+                                                                addItemsToGame(newItems, totalCost, function () {
+                                                                    currentGame.updateGame(function () {
+                                                                        if (currentGame.state !== "waiting") {
+                                                                            notifyAdmins("Таймер пошел");
+                                                                        }
+                                                                    });
+                                                                });
+
+                                                            });
+                                                        } else {
+                                                            declineOffer(offer, "кол-во предметов от одного пользователя не должно превышать " + globalInfo["max_items_per_user"], function () {
+                                                                //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "too_many_items_from_user"});
+                                                            });
+                                                        }
+                                                    } else {
+                                                        declineOffer(offer, "общее кол-во предметов не должно превышать " + globalInfo["max_items"], function () {
+                                                            //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "too_many_items"});
+                                                        });
+                                                    }
+                                                } else {
+                                                    declineOffer(offer, "обмен содержит больше " + globalInfo["max_items_per_trade"] + "предметов", function () {
+                                                        //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "too_many_items_in_trade"});
+                                                    });
+                                                }
+                                            } else {
+                                                declineOffer(offer, "ставка меньше минимальной", function () {
+                                                    //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "low_bet"});
+                                                });
+                                            }
+                                        } else {
+                                            declineOffer(offer, marketError.message, function () {
+                                                //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: marketError.reason});
+                                            });
+                                        }
+                                    } else {
+                                        declineOffer(offer, "обмен содержит предметы из других игр", function () {
+                                            //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "items_to_give"});
+                                        });
+                                    }
+                                });
+
+                            } else {
+                                declineOffer(offer, "профиль пользователя скрыт", function () {
+                                    //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "private_profile"});
+                                });
+                            }
+                        } else {
+                            declineOffer(offer, "попытка вывести предметы", function () {
+                                //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "items_to_give"});
+                            });
+                        }
+                    });
+                } else {
+                    notifyAdmins("Найдено недействительное предложение об обмене (#" + offer.id + "), игнорирую", true);
+                }
+            } else {
+                declineOffer(offer, "у пользователя отсутствует трейд-ссылка", function () {
+                    //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "no_trade_link"});
+                });
+            }
+        });
+    }
+}
 
 
 /**
@@ -555,12 +425,12 @@ function acceptOffer(offer, callback, depth) {
                 });
             }
         } else {
-            offer.getReceivedItems(false, function(err, newItems) {
-                async.forEachOfSeries(newItems, function(i, k, cbf) {
+            offer.getReceivedItems(false, function (err, newItems) {
+                async.forEachOfSeries(newItems, function (i, k, cbf) {
                     i.owner = offer.partner.getSteamID64();
                     i.cost = marketHelper.getItemData(i.market_hash_name).value;
                     cbf();
-                }, function() {
+                }, function () {
                     callback(newItems);
                 });
             });
@@ -625,7 +495,6 @@ function processItems(offer, callback) {
     var totalCost = 0;
     var appIDMatch = true;
     var items = offer.itemsToReceive;
-    console.log(items);
     var marketError = false;
     async.forEachOfSeries(items, function (item, key, cb) {
         if (item.appid !== config["appID"]) {
@@ -806,6 +675,7 @@ function Game(id) {
     this.timerID = -1;
     this.state = "waiting";
     this.activeBetters = {};
+    this.winner = null;
 }
 
 Game.prototype.sortBetsByPlayer = function (items, callback) {
@@ -817,7 +687,6 @@ Game.prototype.sortBetsByPlayer = function (items, callback) {
             sortedItems[item.owner].total_cost += data.value;
             sortedItems[item.owner].count++;
         } else {
-            logger.info(item.market_hash_name);
             sortedItems[item.owner] = {total_cost: 0, count: 0, chance: 0};
             var data = marketHelper.getItemData(item.market_hash_name);
             sortedItems[item.owner].total_cost += data.value;
@@ -854,7 +723,6 @@ Game.prototype.updateGame = function (callback) {
         } else {
             _this.sortBetsByPlayer(_this.items, function () {
                 _this.recalculateChance(function () {
-                    console.log(_this.state + " " + _this.activeBetters);
                     if (_this.state === "waiting" && Object.keys(_this.activeBetters).length >= 2) {
                         var start = Date.now();
                         db.collection("games").updateOne({id: _this.id}, {$set: {start_time: start}}, {w: 1}, function (err1, result) {
@@ -895,7 +763,7 @@ Game.prototype.setState = function (newState, callback) {
                     self.setState(newState, callback);
                 }, 500);
             } else {
-                logger.info("Статус игры #" + _this.id + " изменен с '" + _this.state + "' на '" + newState + "'");
+                notifyAdmins("Статус игры #" + _this.id + " изменен с '" + _this.state + "' на '" + newState + "'", true);
                 _this.state = newState;
                 callback();
             }
@@ -918,7 +786,7 @@ Game.prototype.setState = function (newState, callback) {
 Game.prototype.resume = function (startTime, bank, items, winner, float, hash, state) {
     var _this = this;
     _this.state = state;
-    if (winner) {
+    if (winner && startTime > 0 && Date.now() - startTime >= Number(config["gameDuration"]) * 1000 && state !== "active") {
         if (state !== "sent") {
             //отправить выигрыш
         } else {
@@ -927,12 +795,12 @@ Game.prototype.resume = function (startTime, bank, items, winner, float, hash, s
             });
         }
     } else {
+        _this.winner = winner;
         _this.currentBank = bank;
         _this.items = items;
         _this.float = float;
         _this.hash = hash;
         _this.sortBetsByPlayer(_this.items, function () {
-            console.log(_this.activeBetters);
             if (startTime > 0) {
                 if (Date.now() - startTime >= Number(config["gameDuration"]) * 1000) {
                     _this.roll(function () {
@@ -944,9 +812,8 @@ Game.prototype.resume = function (startTime, bank, items, winner, float, hash, s
                 }
             } else if (Object.keys(_this.activeBetters).length >= 2) {
                 var start = Date.now();
-                console.log("kek");
                 _this.updateGame(function () {
-                    console.log("sas");
+                    logger.info("Информация об игре обновлена");
                 });
             }
         });
@@ -1006,62 +873,70 @@ Game.prototype.start = function () {
 
 Game.prototype.selectWinner = function (callback) {
     var _this = this;
-    var winnerNumber = Math.max((_this.currentBank * _this.float).toFixed(0) * 1, 1);
-    console.log(winnerNumber);
-    async.forEachOfSeries(_this.items, function(item ,key, cb) {
-        if (winnerNumber >= Number(item.cost_from) && winnerNumber <= Number(item.cost_to)) {
-            console.log("found: " + item.owner);
-            callback(item.owner);
-        } else {
-            cb();
-        }
-    }, function() {
+    var set = false;
+    if (_this.winner) {
+        callback(_this.winner);
+    } else {
+        var winnerNumber = Math.max((_this.currentBank * _this.float).toFixed(0) * 1, 1);
+        async.forEachOfSeries(_this.items, function (item, key, cb) {
+            if (winnerNumber >= Number(item.cost_from) && winnerNumber <= Number(item.cost_to)) {
+                set = true;
+                callback(item.owner);
+            } else {
+                cb();
+            }
+        }, function () {
+            if (!set)
+                callback(null);
+        });
+    }
 
-    });
 }
 
 Game.prototype.roll = function (callback) {
-    console.log("Рулеточка пошлааааа");
     ROLLING = true;
     var _this = this;
-    _this.selectWinner(function(winnerID) {
-        console.log(winnerID);
-        var newGame = new Game(_this.id + 1);
-
-        currentGame = newGame;
-        getSteamUser(winnerID, function (user) {
-            //socket.emit("event.roll", {winnerID, user.name, user.getAvatarURL()});
-            setTimeout(function () {
-                var time = Date.now();
-                loadInventory(function (items) {
-                    var itemsToSend = [];
-                    var gameItems = _this.items;
-                    var feeSize = (_this.currentBank * Number(globalInfo["fee"]) / 100).toFixed(0);
-                    gameItems.sort(function (a, b) {
-                        return (a.cost > b.cost) ? 1 : ((b.cost > a.cost) ? -1 : 0);
-                    });
-                    async.forEachOfSeries(gameItems, function (item, key, cb) {
-                        var inventoryItem = items.filter(function (o, i, a) {
-                            console.log(o.id + " " + item.id);
-                            return o.id === item.id;
+    _this.setState("rolling", function () {
+        _this.selectWinner(function (winnerID) {
+            var newGame = new Game(_this.id + 1);
+            currentGame = newGame;
+            getSteamUser(winnerID, function (user) {
+                notifyAdmins("Игра #" + _this.id + " завершена, победитель: " + user.name)
+                //socket.emit("event.roll", {winnerID, user.name, user.getAvatarURL()});
+                setTimeout(function () {
+                    var time = Date.now();
+                    loadInventory(function (items) {
+                        var itemsToSend = [];
+                        var gameItems = _this.items;
+                        var feeSize = (_this.currentBank * Number(globalInfo["fee"]) / 100).toFixed(0);
+                        var totalFee = feeSize;
+                        var feeItems = 0;
+                        gameItems.sort(function (a, b) {
+                            return (a.cost > b.cost) ? 1 : ((b.cost > a.cost) ? -1 : 0);
                         });
-                        console.log(inventoryItem);
-                        if (inventoryItem && inventoryItem[0]) {
-                            inventoryItem = inventoryItem[0];
-                            if (item.cost <= feeSize && item.owner !== winnerID) {
-                                feeSize -= item.cost;
-                                gameItems.splice(gameItems.indexOf(item, 1));
+                        async.forEachOfSeries(gameItems, function (item, key, cb) {
+                            var inventoryItem = items.filter(function (o, i, a) {
+                                return o.id === item.id;
+                            });
+                            if (inventoryItem && inventoryItem[0]) {
+                                inventoryItem = inventoryItem[0];
+
+                                if (item.cost * 100 <= feeSize && item.owner !== winnerID) {
+                                    feeSize -= item.cost * 100;
+                                    feeItems++;
+                                    //    gameItems.splice(gameItems.indexOf(item, 1));
+                                } else {
+                                    itemsToSend.push(inventoryItem);
+                                }
+                                cb();
                             } else {
-                                itemsToSend.push(inventoryItem);
+                                cb();
                             }
-                            cb();
-                        } else {
-                            cb();
-                        }
-                    }, function () {
-                        sendItems(winnerID, itemsToSend, "Ваш выигрыш на сайте DOTA2BETS.RU в игре №" + _this.id, function (offer) {
-                            steamCommunity.checkConfirmations();
-                            sendTradeToQueue(offer.id, itemsToSend, function () {
+                        }, function () {
+                            totalFee = ((totalFee - feeSize) / 100).toFixed(2);
+                            notifyAdmins("Размер комиссии: " + feeItems + " предметов на сумму " + totalFee + "$");
+                            sendItems(winnerID, itemsToSend, "Ваш выигрыш на сайте DOTA2BETS.RU в игре №" + _this.id, function (offer) {
+                                steamCommunity.checkConfirmations();
                                 _this.submitWinner(user, (_this.activeBetters[winnerID].total_cost / _this.currentBank).toFixed(2), function () {
                                     _this.finish(winnerID, function () {
                                         _this.setState("sent", function () {
@@ -1084,11 +959,10 @@ Game.prototype.roll = function (callback) {
                             });
                         });
                     });
-                });
-            }, config["rouletteDuration"]);
+                }, config["rouletteDuration"]);
+            });
         });
     });
-
 }
 
 Game.prototype.submitWinner = function (winner, percentage, callback) {
@@ -1146,8 +1020,6 @@ function sendItems(user, items, msg, callback) {
     var offer = tradeManager.createOffer(user);
     offer.addMyItems(items);
     getToken(user, function (token) {
-        console.log(token);
-        console.log(items);
         offer.send(msg, token, function (err, result) {
             if (!err) {
                 callback(offer);
@@ -1195,6 +1067,70 @@ function getToken(steamid, callback) {
     });
 }
 
+function getQueuedItems(callback, depth) {
+    tradeManager.getOffers(1, null, function (err, sentOffers, receivedOffers) {
+        if (err) {
+            if (!depth)
+                depth = 1;
+            else
+                depth++;
+            logger.error("Ошибка при загрузке обменов");
+            logger.error(err.stack || err);
+            logger.error("Следующая попытка через 1.5c");
+            setTimeout(function () {
+                getQueuedItems(callback, depth);
+            }, 1500);
+        } else {
+            var queuedItems = [];
+            async.forEachOfSeries(sentOffers, function (offer, key, cb) {
+                if (offer.state === 2)
+                    queuedItems = queuedItems.concat(offer.itemsToGive);
+                cb();
+            }, function () {
+                callback(queuedItems.map(function (item) {
+                    return item.id;
+                }));
+            });
+        }
+    });
+}
+
+function getActiveTrades(callback, depth) {
+    tradeManager.getOffers(1, null, function (err, sentOffers, receivedOffers) {
+        if (err) {
+            if (!depth)
+                depth = 1;
+            else
+                depth++;
+            logger.error("Ошибка при загрузке обменов");
+            logger.error(err.stack || err);
+            logger.error("Следующая попытка через 1.5c");
+            setTimeout(function () {
+                getActiveTrades(callback, depth);
+            }, 1500);
+        } else {
+            var trades = [];
+            async.forEachOfSeries(sentOffers, function (offer, key, cb) {
+                if (offer.state === 2) {
+                    getSteamUser(offer.partner.getSteamID64(), function (user) {
+                        trades.push({
+                            offerid: offer.id,
+                            receiver: user.name,
+                            receiverid: offer.partner.getSteamID64(),
+                            size: offer.itemsToGive.length
+                        });
+                        cb();
+                    });
+                } else {
+                    cb();
+                }
+            }, function () {
+                callback(trades);
+            });
+        }
+    });
+}
+
 /**
  * Выполняет соответствующую команду
  * @param command название команды
@@ -1214,9 +1150,59 @@ function executeCommand(command, args, sender) {
             }, 2000);
             break;
         }
+        case "roll":
+        {
+            if (Object.keys(currentGame.activeBetters).length >= 2) {
+                if (!ROLLING) {
+                    steamClient.chatMessage(sender, "Запуск рулетки");
+                    clearInterval(currentGame.timerID);
+                    currentGame.roll(function () {
+
+                    });
+                } else {
+                    steamClient.chatMessage(sender, "Ошибка: рулетка уже запущена");
+                }
+            } else {
+                steamClient.chatMessage(sender, "Невозможно запустить рулетку: недостаточно игроков");
+            }
+            break;
+        }
         case "status" :
         {
-            steamClient.chatMessage(sender, "time: " + currentGame.gameTimer);
+            steamClient.chatMessage(sender, "Текущая игра: " + currentGame.id);
+            steamClient.chatMessage(sender, "Кол-во участников: " + (currentGame.activeBetters ? Object.keys(currentGame.activeBetters).length : 0));
+            steamClient.chatMessage(sender, "Кол-во предметов: " + currentGame.items.length);
+            steamClient.chatMessage(sender, "Статус игры: " + currentGame.state);
+            steamClient.chatMessage(sender, "Время до конца игры: " + currentGame.gameTimer);
+            steamClient.chatMessage(sender, "Банк: " + (currentGame.currentBank / 100).toFixed(2) + "$");
+            currentGame.selectWinner(function (steamid) {
+                if (!steamid) {
+                    steamClient.chatMessage(sender, "Потенциальный победитель: не выбран");
+                } else {
+                    getSteamUser(steamid, function (user) {
+                        steamClient.chatMessage(sender, "Потенциальный победитель: " + user.name);
+                    });
+                }
+
+            });
+            break;
+        }
+        case "timeleft" :
+        {
+            steamClient.chatMessage(sender, "Время до конца игры: " + currentGame.gameTimer);
+            break;
+        }
+        case "winner" :
+        {
+            currentGame.selectWinner(function (steamid) {
+                if (!steamid) {
+                    steamClient.chatMessage(sender, "Потенциальный победитель: не выбран");
+                } else {
+                    getSteamUser(steamid, function (user) {
+                        steamClient.chatMessage(sender, "Потенциальный победитель: " + user.name);
+                    });
+                }
+            });
             break;
         }
         case "notifications":
@@ -1312,17 +1298,129 @@ function executeCommand(command, args, sender) {
         }
         case "sendall":
         {
-            loadInventory(function (items) {
-                sendItems(sender, items, "Лови", function () {
-                    steamCommunity.checkConfirmations();
-                    steamClient.chatMessage(sender, "Трейд отправлен!");
+            getQueuedItems(function (itemIDs) {
+                var usedItems = currentGame.items.reduce(function (map, obj) {
+                    map[obj.id] = obj;
+                    return map;
+                }, {});
+                loadInventory(function (items) {
+                    var itemsToSend = items.map(function (i) {
+                        if (!usedItems[i.id] && itemIDs.indexOf(i.id) < 0) {
+                            return i;
+                        } else {
+                            return null;
+                        }
+                    }).filter(function (n) {
+                        return n != undefined && n !== null
+                    });
+                    if (itemsToSend && itemsToSend.length > 0) {
+                        sendItems(sender, itemsToSend, "Ваши предметы", function () {
+                            steamCommunity.checkConfirmations();
+                            steamClient.chatMessage(sender, "Трейд отправлен");
+                        });
+                    } else {
+                        steamClient.chatMessage(sender, "Ошибка: предметы недоступны");
+                    }
                 });
             });
             break;
         }
+        case "trades":
+        {
+            getActiveTrades(function (tradesInfo) {
+                for (var i = 0; i < tradesInfo.length; i++) {
+                    steamClient.chatMessage(sender, "Обмен №" + tradesInfo[i].offerid + " c " + tradesInfo[i].receiver + " (" + tradesInfo[i].receiverid + "), " + tradesInfo[i].size + " предметов");
+                }
+            });
+            break;
+        }
+        case "send":
+        {
+            getQueuedItems(function (itemIDs) {
+                try {
+                    var names = args.join(" ").trim().split(",").map(function (s) {
+                        return s.trim();
+                    });
+                    var itemsToSend = [];
+                    var usedItems = currentGame.items.reduce(function (map, obj) {
+                        map[obj.id] = obj;
+                        return map;
+                    }, {});
+                    loadInventory(function (items) {
+                        async.forEachOfSeries(items, function (item, key, cb) {
+                            if (names.indexOf(item.market_hash_name) >= 0 && !usedItems[item.id] && itemIDs.indexOf(item.id) < 0) {
+                                itemsToSend.push(item);
+                            }
+                            cb();
+                        }, function () {
+                            if (itemsToSend && itemsToSend.length > 0) {
+                                sendItems(sender, itemsToSend, "Ваши предметы", function () {
+                                    steamCommunity.checkConfirmations();
+                                    steamClient.chatMessage(sender, "Трейд отправлен");
+                                });
+                            } else {
+                                steamClient.chatMessage(sender, "Ошибка: предметы недоступны");
+                            }
+                        });
+                    });
+                } catch (err) {
+                    steamClient.chatMessage(sender, "Использование: /send [steamID]");
+                }
+            });
+            break;
+        }
+        case "setwinner":
+        {
+            if (args.length != 1) {
+                steamClient.chatMessage(sender, "Использование: /setwinner [steamID]");
+            } else {
+                if (currentGame.activeBetters.length > 0 && currentGame.activeBetters[args[0]]) {
+                    db.collection("games").updateOne({id: currentGame.id}, {
+                        $set: {
+                            winner: args[0]
+                        }
+                    }, {w: 1}, function (err, res) {
+                        if (err) {
+                            steamClient.chatMessage(sender, "Ошибка, попытайтесь снова");
+                        } else {
+                            currentGame.winner = args[0];
+                            steamClient.chatMessage(sender, "Победитель установлен");
+                            getSteamUser(sender, function (user) {
+                                getSteamUser(args[0], function (user2) {
+                                    notifyAdmins(user.name + " установил пользователя " + user2.name + " победителем в игру №" + currentGame.id)
+                                });
+                            });
+                        }
+                    });
+                } else {
+                    steamClient.chatMessage(sender, "Ошибка: пользователь не найден");
+                }
+            }
+            break;
+        }
+        case "clear":
+        {
+            var msg = "";
+            for (var k = 0; k < 70; k++)
+                msg += "\n";
+            steamClient.chatMessage(sender, msg);
+            break;
+        }
         case "help":
         {
-            steamClient.chatMessage(sender, "Помощь тут");
+            steamClient.chatMessage(sender, "/status - выводит информацию о текущей игре");
+            steamClient.chatMessage(sender, "/timeleft - выводит время (в секундах) до конца текущей игры");
+            steamClient.chatMessage(sender, "/winner - выводит имя потенциального победителя текущей игры");
+            steamClient.chatMessage(sender, "/setwinner [steamID64] - установить в текущую игру победителя с данным steamID64");
+            steamClient.chatMessage(sender, "/notifications [on/off/status] - включить/отключить уведомленя");
+            steamClient.chatMessage(sender, "/trading [on/off/status] - включить/отключить обработку обменов");
+            steamClient.chatMessage(sender, "/send [market_hash_name, ...] - отправляет вам предметы с заданными market_hash_name");
+            steamClient.chatMessage(sender, "/sendall - отправляет вам весь инвентарь бота");
+            steamClient.chatMessage(sender, "/iteminfo [market_hash_name] - выводит информацию о предмете с данным market_hash_name");
+            steamClient.chatMessage(sender, "/terminate - принудительно завершает работу бота");
+            steamClient.chatMessage(sender, "/roll - запустить рулетку");
+            steamClient.chatMessage(sender, "/clear - очистить консоль");
+            steamClient.chatMessage(sender, "/help - выводит список команд");
             break;
         }
         default:
@@ -1337,17 +1435,20 @@ function executeCommand(command, args, sender) {
  * Класс для операций над торговой площадкой
  * @constructor
  */
-function MarketHelper() {
+function MarketHelper(callback) {
     var _this = this;
     _this.taskID = -1;
     _this.priceData = {};
     if (!config["lastPriceUpdate"] || Date.now() - config["lastPriceUpdate"] >= Number(config["priceUpdateInterval"]) * 1000) {
-        _this.cachePrices();
+        _this.cachePrices(callback);
     } else {
         _this.priceData = JSON.parse(fs.readFileSync("./prices.json", "utf-8"));
         _this.taskID = setTimeout(function () {
-            _this.cachePrices();
+            _this.cachePrices(function () {
+
+            });
         }, (Number(config["priceUpdateInterval"]) * 1000) - (Date.now() - Number(config["lastPriceUpdate"])));
+        callback();
     }
 }
 
@@ -1367,7 +1468,7 @@ MarketHelper.prototype.getItemData = function (marketHashName) {
  * Кэширует цены всех предметов с маркета
  * в файл prices.json с помощью API backpack.tf
  */
-MarketHelper.prototype.cachePrices = function () {
+MarketHelper.prototype.cachePrices = function (callback) {
     var _this = this;
     logger.info("Идет кэширование цен, может занять до 1 минуты");
     var url = "http://backpack.tf/api/IGetMarketPrices/v1/?format=json&appid=" + config["appID"] + "&key=" + config["bptfAPIKey"];
@@ -1377,7 +1478,7 @@ MarketHelper.prototype.cachePrices = function () {
             logger.error(err.stack || err);
             logger.error("Повторная попытка через 3с.");
             setTimeout(function () {
-                self.cachePrices();
+                self.cachePrices(callback);
             }, 3000);
         } else {
             var data = JSON.parse(body);
@@ -1388,14 +1489,16 @@ MarketHelper.prototype.cachePrices = function () {
                 config["lastPriceUpdate"] = Date.now();
                 fs.writeFileSync("./config.json", JSON.stringify(config, null, 3), "utf-8");
                 _this.taskID = setTimeout(function () {
-                    self.cachePrices();
+                    self.cachePrices(function () {
+                    });
                 }, Number(config["priceUpdateInterval"]) * 1000);
+                callback();
             } else {
                 logger.error("Не удалось прокэшировать цены:");
                 logger.error(data.response.message);
                 logger.error("Повторная попытка через 3с.");
                 setTimeout(function () {
-                    self.cachePrices();
+                    self.cachePrices(callback);
                 }, 3000);
             }
         }
