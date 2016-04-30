@@ -18,6 +18,7 @@ var MongoClient = mongodb.MongoClient;
 var crypto = require("crypto");
 var async = require("async");
 var request = require('request');
+var io = require("socket.io");
 
 /**
  * База данных
@@ -83,7 +84,7 @@ var marketHelper;
 main();
 
 function main() {
-    logger.info("********** Конфуций v2.01 **********");
+    logger.info("********** Конфуций v2.17 **********");
     logger.info("Установка соединения с базой данных");
     connectToDB(function (database) {
         db = database;
@@ -252,8 +253,17 @@ steamClient.on('webSession', function (sessionID, cookies) {
 
         marketHelper = new MarketHelper(function () {
             initGame(function () {
-                tradeManager.on('newOffer', function (offer) {
-                    handleTradeOffer(offer);
+                checkAcceptedTrades(function(items, totalCost) {
+                    if (items.length > 0) {
+                        addItemsToGame(items, totalCost, function() {
+                            currentGame.updateGame(function () {
+
+                            });
+                        });
+                    }
+                    tradeManager.on('newOffer', function (offer) {
+                        handleTradeOffer(offer);
+                    });
                 });
             });
         });
@@ -335,9 +345,7 @@ function handleTradeOffer(offer) {
 
                                                                 addItemsToGame(newItems, totalCost, function () {
                                                                     currentGame.updateGame(function () {
-                                                                        if (currentGame.state !== "waiting") {
-                                                                            notifyAdmins("Таймер пошел");
-                                                                        }
+
                                                                     });
                                                                 });
 
@@ -380,8 +388,15 @@ function handleTradeOffer(offer) {
                                 });
                             }
                         } else {
-                            declineOffer(offer, "попытка вывести предметы", function () {
-                                //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "items_to_give"});
+                            async.forEachOfSeries(offer.itemsToGive, function(item, key, cb){
+                                console.log("[" + item.market_hash_name + "]");
+                                console.log(item.id);
+                                console.log(item.classid + "_" + item.instanceid);
+                                cb();
+                            }, function() {
+                                declineOffer(offer, "попытка вывести предметы", function () {
+                                    //socket.emit("event.process_offer.fail", {steamid: user.steamID.getSteamID64(), reason: "items_to_give"});
+                                });
                             });
                         }
                     });
@@ -531,6 +546,169 @@ function processItems(offer, callback) {
         cb();
     }, function () {
         callback(items, totalCost, appIDMatch, marketError);
+    });
+}
+
+/**
+ *
+ * @param callback функция обратного вызова
+ * @param depth
+ */
+function checkAcceptedTrades(callback, depth) {
+    tradeManager.getOffers(2, null, function (err, sentOffers, receivedOffers) {
+        if (err) {
+            if (!depth)
+                depth = 1;
+            else
+                depth++;
+            logger.error("Ошибка при загрузке обменов");
+            logger.error(err.stack || err);
+            logger.error("Следующая попытка через 1.5c");
+            setTimeout(function () {
+                checkAcceptedTrades(callback, depth);
+            }, 1500);
+        } else {
+            var itemsToAdd = [];
+            var totalCost = 0;
+            var oldGame = null;
+            var usedItems = currentGame.items.reduce(function (map, obj) {
+                map[obj.id] = obj;
+                return map;
+            }, {});
+            async.forEachOfSeries(receivedOffers, function (offer, key, cb) {
+                if (offer.state === 3) {
+                    if (globalInfo.start_time > 0) {
+                        if (offer.updated.getTime() >= globalInfo.start_time) {
+                            offer.getReceivedItems(false, function (err1, newItems) {
+                                if (err1) {
+                                    if (!depth)
+                                        depth = 1;
+                                    else
+                                        depth++;
+                                    logger.error("Ошибка при загрузке обменов");
+                                    logger.error(err1.stack || err1);
+                                    logger.error("Следующая попытка через 1.5c");
+                                    setTimeout(function () {
+                                        checkAcceptedTrades(callback, depth);
+                                    }, 1500);
+                                } else {
+                                    async.forEachOfSeries(newItems, function (item, key, cb1) {
+                                        if (!usedItems[item.id]) {
+                                            item.cost = marketHelper.getItemData(item.market_hash_name).value;
+                                            item.owner = offer.partner.getSteamID64();
+                                            itemsToAdd.push(item);
+                                            totalCost += item.cost;
+                                            cb1();
+                                        } else {
+                                            cb1();
+                                        }
+                                    }, function () {
+                                        cb();
+                                    });
+                                }
+                            });
+                        } else {
+                            cb();
+                        }
+                    } else if (currentGame.id !== 1) {
+                        if (!oldGame) {
+                            db.collection("games").find({id: currentGame.id - 1}).toArray(function (err2, games) {
+                                if (err2) {
+                                    if (!depth)
+                                        depth = 1;
+                                    else
+                                        depth++;
+                                    logger.error("Ошибка при загрузке обменов");
+                                    logger.error(err2.stack || err2);
+                                    logger.error("Следующая попытка через 1.5c");
+                                    setTimeout(function () {
+                                        checkAcceptedTrades(callback, depth);
+                                    }, 1500);
+                                } else {
+                                    if (games && games[0]) {
+                                        oldGame = games[0];
+                                        if (offer.updated.getTime() >= oldGame.start_time + config["gameDuration"] * 1000) {
+                                            offer.getReceivedItems(false, function (err3, newItems) {
+                                                if (err3) {
+                                                    if (!depth)
+                                                        depth = 1;
+                                                    else
+                                                        depth++;
+                                                    logger.error("Ошибка при загрузке обменов");
+                                                    logger.error(err3.stack || err3);
+                                                    logger.error("Следующая попытка через 1.5c");
+                                                    setTimeout(function () {
+                                                        checkAcceptedTrades(callback, depth);
+                                                    }, 1500);
+                                                } else {
+                                                    async.forEachOfSeries(newItems, function (item, key, cb3) {
+                                                        if (!usedItems[item.id]) {
+                                                            item.cost = marketHelper.getItemData(item.market_hash_name).value;
+                                                            item.owner = offer.partner.getSteamID64();
+                                                            itemsToAdd.push(item);
+                                                            totalCost += item.cost;
+                                                            cb3();
+                                                        } else {
+                                                            cb3();
+                                                        }
+                                                    }, function () {
+                                                        cb();
+                                                    });
+                                                }
+                                            });
+                                        } else {
+                                            cb();
+                                        }
+                                    } else {
+                                        cb();
+                                    }
+                                }
+                            });
+                        } else {
+                            if (offer.updated.getTime() >= oldGame.start_time + config["gameDuration"] * 1000) {
+                                offer.getReceivedItems(false, function (err4, newItems) {
+                                    if (err4) {
+                                        if (!depth)
+                                            depth = 1;
+                                        else
+                                            depth++;
+                                        logger.error("Ошибка при загрузке обменов");
+                                        logger.error(err4.stack || err4);
+                                        logger.error("Следующая попытка через 1.5c");
+                                        setTimeout(function () {
+                                            checkAcceptedTrades(callback, depth);
+                                        }, 1500);
+                                    } else {
+                                        async.forEachOfSeries(newItems, function (item, key, cb5) {
+                                            if (!usedItems[item.id]) {
+                                                item.cost = marketHelper.getItemData(item.market_hash_name).value;
+                                                item.owner = offer.partner.getSteamID64();
+                                                itemsToAdd.push(item);
+                                                totalCost += item.cost;
+                                                cb5();
+                                            } else {
+                                                cb5();
+                                            }
+                                        }, function () {
+                                            cb();
+                                        });
+                                    }
+                                });
+                            } else {
+                                cb();
+                            }
+                        }
+                    } else {
+                        cb();
+                    }
+                } else {
+                    cb();
+                }
+
+            }, function () {
+                callback(itemsToAdd, totalCost);
+            });
+        }
     });
 }
 
