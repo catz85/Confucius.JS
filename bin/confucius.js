@@ -31,7 +31,7 @@ var db;
 var LOGGED_IN = false;
 
 /**
- * Крутится ли рулетка
+ * Запущена ли рулетка
  * @type {boolean}
  */
 var ROLLING = false;
@@ -169,7 +169,6 @@ function auth() {
 
     steamClient.logOn(logOnOptions);
 }
-//      "76561198165021961"
 
 /**
  * Коннектим базу данных
@@ -264,7 +263,8 @@ steamClient.on('webSession', function (sessionID, cookies) {
 });
 
 /**
- * Обрабатываем обмен
+ * Обрабатывает обмен
+ * @param offer предложение об обмене
  */
 function handleTradeOffer(offer) {
     if (globalInfo["trading"] === true) {
@@ -439,6 +439,12 @@ function acceptOffer(offer, callback, depth) {
     });
 }
 
+/**
+ * Вносит предметы в игру
+ * @param items массив предметов
+ * @param totalCost полная стоимость предметов
+ * @param callback функция обратного вызова
+ */
 function addItemsToGame(items, totalCost, callback) {
     var bank = currentGame.currentBank;
     async.forEachOfSeries(items, function (item, key, cb) {
@@ -465,6 +471,11 @@ function addItemsToGame(items, totalCost, callback) {
     });
 }
 
+/**
+ * Вносит предмет в базу данных
+ * @param item предмет
+ * @param callback функция обратного вызова
+ */
 function addItemToDB(item, callback) {
     db.collection("games").updateOne({id: currentGame.id}, {$push: {items: item}}, {w: 1}, function (err, result) {
         if (err) {
@@ -678,6 +689,11 @@ function Game(id) {
     this.winner = null;
 }
 
+/**
+ * Сортирует ставки по steamID поставивших
+ * @param items массив предметов
+ * @param callback функция обратного вызова
+ */
 Game.prototype.sortBetsByPlayer = function (items, callback) {
     var _this = this;
     var sortedItems = {};
@@ -702,6 +718,10 @@ Game.prototype.sortBetsByPlayer = function (items, callback) {
     });
 }
 
+/**
+ * Перерасчитывает шанс всех пользователей
+ * @param callback функция обратного вызова
+ */
 Game.prototype.recalculateChance = function (callback) {
     var _this = this;
     async.forEachOfSeries(_this.activeBetters, function (data, key, cb) {
@@ -712,6 +732,10 @@ Game.prototype.recalculateChance = function (callback) {
     });
 }
 
+/**
+ * Обновляет информацию об игре
+ * @param callback функция обратного вызова
+ */
 Game.prototype.updateGame = function (callback) {
     var _this = this;
     db.collection("games").updateOne({id: _this.id}, {$set: {bank: _this.currentBank}}, {w: 1}, function (err, result) {
@@ -751,6 +775,11 @@ Game.prototype.updateGame = function (callback) {
     });
 }
 
+/**
+ * Изменяет статус игры
+ * @param newState новый статус
+ * @param callback функция обратного вызова
+ */
 Game.prototype.setState = function (newState, callback) {
     var _this = this;
     if (_this.state !== newState) {
@@ -821,6 +850,10 @@ Game.prototype.resume = function (startTime, bank, items, winner, float, hash, s
     }
 }
 
+/**
+ * Сохраняет ифнормацию об игре в базу
+ * @param callback функция обратного вызова
+ */
 Game.prototype.saveToDB = function (callback) {
     var _this = this;
     db.collection("info").updateOne({name: "current_game"}, {$set: {value: _this.id}}, {w: 1}, function (error, result) {
@@ -871,6 +904,10 @@ Game.prototype.start = function () {
     });
 }
 
+/**
+ * Выбирает победителя
+ * @param callback функция обратного вызова
+ */
 Game.prototype.selectWinner = function (callback) {
     var _this = this;
     var set = false;
@@ -893,16 +930,20 @@ Game.prototype.selectWinner = function (callback) {
 
 }
 
+/**
+ * Запускает рулетку
+ * @param callback функция обратного вызова
+ */
 Game.prototype.roll = function (callback) {
     ROLLING = true;
     var _this = this;
-    _this.setState("rolling", function () {
-        _this.selectWinner(function (winnerID) {
-            var newGame = new Game(_this.id + 1);
-            currentGame = newGame;
-            getSteamUser(winnerID, function (user) {
-                notifyAdmins("Игра #" + _this.id + " завершена, победитель: " + user.name)
-                //socket.emit("event.roll", {winnerID, user.name, user.getAvatarURL()});
+    _this.selectWinner(function (winnerID) {
+        var newGame = new Game(_this.id + 1);
+        currentGame = newGame;
+        getSteamUser(winnerID, function (user) {
+            notifyAdmins("Игра #" + _this.id + " завершена, победитель: " + user.name)
+            //socket.emit("event.roll", {winnerID, user.name, user.getAvatarURL()});
+            _this.setState("rolling", function () {
                 setTimeout(function () {
                     var time = Date.now();
                     loadInventory(function (items) {
@@ -920,11 +961,9 @@ Game.prototype.roll = function (callback) {
                             });
                             if (inventoryItem && inventoryItem[0]) {
                                 inventoryItem = inventoryItem[0];
-
                                 if (item.cost * 100 <= feeSize && item.owner !== winnerID) {
                                     feeSize -= item.cost * 100;
                                     feeItems++;
-                                    //    gameItems.splice(gameItems.indexOf(item, 1));
                                 } else {
                                     itemsToSend.push(inventoryItem);
                                 }
@@ -965,6 +1004,12 @@ Game.prototype.roll = function (callback) {
     });
 }
 
+/**
+ * Вносит данные победителя в базу
+ * @param winner steamID64 победителя
+ * @param percentage шанс на победу (в процентах)
+ * @param callback функция обратного вызова
+ */
 Game.prototype.submitWinner = function (winner, percentage, callback) {
     var _this = this;
     db.collection("games").updateOne({id: _this.id}, {
@@ -986,6 +1031,11 @@ Game.prototype.submitWinner = function (winner, percentage, callback) {
     });
 }
 
+/**
+ * Обновляет информацию в профиле победителя (кол-во побед и т.д.)
+ * @param winner steamID64 победителя
+ * @param callback функция обратного вызова
+ */
 Game.prototype.finish = function (winner, callback) {
     var _this = this;
     db.collection("users").find({steamid: winner}).toArray(function (err, users) {
@@ -1015,6 +1065,13 @@ Game.prototype.finish = function (winner, callback) {
     });
 }
 
+/**
+ * Отправляет предметы заданному пользователю
+ * @param user steamID64 пользователя
+ * @param items массив с предметами
+ * @param msg сообщение к обмену
+ * @param callback функция обратного вызова
+ */
 function sendItems(user, items, msg, callback) {
     var _this = this;
     var offer = tradeManager.createOffer(user);
@@ -1034,6 +1091,10 @@ function sendItems(user, items, msg, callback) {
     });
 }
 
+/**
+ * Загружает инвентарь бота
+ * @param callback функция обратного вызова
+ */
 function loadInventory(callback) {
     tradeManager.loadInventory(config["appID"], 2, true, function (err, items) {
         if (err) {
@@ -1048,6 +1109,12 @@ function loadInventory(callback) {
     });
 }
 
+/**
+ * Передает идентификатор ссылки на обмен
+ * данного ползователя
+ * @param steamid steamID64 пользователя
+ * @param callback функция обратного вызова
+ */
 function getToken(steamid, callback) {
     db.collection("users").find({steamid: steamid}).toArray(function (err, users) {
         if (err) {
@@ -1067,6 +1134,12 @@ function getToken(steamid, callback) {
     });
 }
 
+/**
+ * Передает массив с предметами, находящимися в
+ * отправленных обменах
+ * @param callback функция обратного вызова
+ * @param depth
+ */
 function getQueuedItems(callback, depth) {
     tradeManager.getOffers(1, null, function (err, sentOffers, receivedOffers) {
         if (err) {
@@ -1095,6 +1168,18 @@ function getQueuedItems(callback, depth) {
     });
 }
 
+/**
+ * Передает информацию об отправленных ботом обменах
+ * в следующем формате:
+ * {
+ *  offerid - номер обмена
+ *  receiver - имя получателя
+ *  receiverid - steamID64 получателя
+ *  size - число предметов в обмене
+ * }
+ * @param callback функция обратного вызова
+ * @param depth
+ */
 function getActiveTrades(callback, depth) {
     tradeManager.getOffers(1, null, function (err, sentOffers, receivedOffers) {
         if (err) {
@@ -1420,6 +1505,7 @@ function executeCommand(command, args, sender) {
             steamClient.chatMessage(sender, "/terminate - принудительно завершает работу бота");
             steamClient.chatMessage(sender, "/roll - запустить рулетку");
             steamClient.chatMessage(sender, "/clear - очистить консоль");
+            steamClient.chatMessage(sender, "/trades - выводит информацию об активных трейдах, отправленных ботом");
             steamClient.chatMessage(sender, "/help - выводит список команд");
             break;
         }
