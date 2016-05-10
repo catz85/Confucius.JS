@@ -10,15 +10,16 @@ var fs = require("fs");
 var winston = require("winston");
 var moment = require("moment");
 var SteamUser = require("steam-user");
-var SteamCommunityContainer = require("steamcommunity");
+var SteamCommunity = require("steamcommunity");
 var SteamTotp = require("steam-totp");
 var TradeOfferManager = require("steam-tradeoffer-manager");
 var mongodb = require("mongodb");
 var MongoClient = mongodb.MongoClient;
 var crypto = require("crypto");
 var async = require("async");
-var request = require('request');
+var request = require("request");
 var io = require("socket.io");
+var MarketHelper = require("./steam-market-helper.js");
 
 var FORCECHECK = false;
 
@@ -63,7 +64,7 @@ var notificationUsers = [];
  */
 var steamClient = new SteamUser();
 var tradeManager;
-var steamCommunity = new SteamCommunityContainer();
+var steamCommunity = new SteamCommunity();
 
 /**
  * Объект, несущий информацию о текущей игре
@@ -250,7 +251,7 @@ steamClient.on('webSession', function (sessionID, cookies) {
                 steamCommunity.startConfirmationChecker(30000, config["logOnOptions"]["identitySecret"]);
                 logger.info("Повторная авторизация выполнена");
                 RELOGIN = false;
-                setTimeout(function() {
+                setTimeout(function () {
                     notifyAdmins("Повторная веб-авторизация выполнена");
                 }, 1500);
             }
@@ -295,7 +296,7 @@ steamClient.on('webSession', function (sessionID, cookies) {
                                 logger.error("Выполняю повторную веб-авторизацию");
                                 logger.error(err.stack || err);
                                 RELOGIN = true;
-                                var t = setInterval(function() {
+                                var t = setInterval(function () {
                                     if (RELOGIN) {
                                         steamClient.webLogOn();
                                     } else {
@@ -308,7 +309,7 @@ steamClient.on('webSession', function (sessionID, cookies) {
                         });
                     });
                 });
-            });
+            }, config, "./config.json", logger.info, logger.error);
         });
     }
 
@@ -827,7 +828,7 @@ function declineOffer(offer, reason, callback, depth) {
  * @param depth номер попытки
  */
 function getSteamUser(id, callback, depth) {
-    steamCommunity.getSteamUser(new SteamCommunityContainer.SteamID(id), function (err, user) {
+    steamCommunity.getSteamUser(new SteamCommunity.SteamID(id), function (err, user) {
         if (err) {
             logger.error("Ошибка при получении данных пользователя " + id);
             logger.error(err.stack || err);
@@ -1867,80 +1868,6 @@ function executeCommand(command, args, sender) {
         }
     }
 
-}
-
-/**
- * Класс для операций над торговой площадкой
- * @constructor
- */
-function MarketHelper(callback) {
-    var _this = this;
-    _this.taskID = -1;
-    _this.priceData = {};
-    if (!config["lastPriceUpdate"] || Date.now() - config["lastPriceUpdate"] >= Number(config["priceUpdateInterval"]) * 1000) {
-        _this.cachePrices(callback);
-    } else {
-        _this.priceData = JSON.parse(fs.readFileSync("./prices.json", "utf-8"));
-        _this.taskID = setTimeout(function () {
-            _this.cachePrices(function () {
-
-            });
-        }, (Number(config["priceUpdateInterval"]) * 1000) - (Date.now() - Number(config["lastPriceUpdate"])));
-        callback();
-    }
-}
-
-/**
- * Возвращает объект со следующими данными о предмете:
- *  last_updated - последнее обновление цены (не используем)
- *  quantity - кол-во лотов на маркете (если меньше 10, отклоняем обмен)
- *  value - цена в центах
- * @param marketHashName
- * @returns {*}
- */
-MarketHelper.prototype.getItemData = function (marketHashName) {
-    return this.priceData[marketHashName];
-}
-
-/**
- * Кэширует цены всех предметов с маркета
- * в файл prices.json с помощью API backpack.tf
- */
-MarketHelper.prototype.cachePrices = function (callback) {
-    var _this = this;
-    logger.info("Идет кэширование цен, может занять до 1 минуты");
-    var url = "http://backpack.tf/api/IGetMarketPrices/v1/?format=json&appid=" + config["appID"] + "&key=" + config["bptfAPIKey"];
-    request(url, function (err, response, body) {
-        if (err) {
-            logger.error("Не удалось прокэшировать цены");
-            logger.error(err.stack || err);
-            logger.error("Повторная попытка через 3с.");
-            setTimeout(function () {
-                self.cachePrices(callback);
-            }, 3000);
-        } else {
-            var data = JSON.parse(body);
-            if (Number(data.response.success) == 1) {
-                _this.priceData = data.response.items;
-                fs.writeFileSync("./prices.json", JSON.stringify(_this.priceData, null, 3), "utf-8");
-                logger.info("Цены успешно прокэшированы");
-                config["lastPriceUpdate"] = Date.now();
-                fs.writeFileSync("./config.json", JSON.stringify(config, null, 3), "utf-8");
-                _this.taskID = setTimeout(function () {
-                    self.cachePrices(function () {
-                    });
-                }, Number(config["priceUpdateInterval"]) * 1000);
-                callback();
-            } else {
-                logger.error("Не удалось прокэшировать цены:");
-                logger.error(data.response.message);
-                logger.error("Повторная попытка через 3с.");
-                setTimeout(function () {
-                    self.cachePrices(callback);
-                }, 3000);
-            }
-        }
-    });
 }
 
 /**
