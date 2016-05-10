@@ -88,7 +88,7 @@ var marketHelper;
 main();
 
 function main() {
-    logger.info("********** Конфуций v2.19 **********");
+    logger.info("********** Конфуций v2.21 **********");
     logger.info("Установка соединения с базой данных");
     connectToDB(function (database) {
         db = database;
@@ -248,7 +248,11 @@ steamClient.on('webSession', function (sessionID, cookies) {
                 steamCommunity.setCookies(cookies);
                 steamCommunity.chatLogon();
                 steamCommunity.startConfirmationChecker(30000, config["logOnOptions"]["identitySecret"]);
+                logger.info("Повторная авторизация выполнена");
                 RELOGIN = false;
+                setTimeout(function() {
+                    notifyAdmins("Повторная веб-авторизация выполнена");
+                }, 1500);
             }
         });
     } else {
@@ -288,10 +292,17 @@ steamClient.on('webSession', function (sessionID, cookies) {
 
                             steamCommunity.on("sessionExpired", function (err) {
                                 logger.error("Истекло время сессии");
+                                logger.error("Выполняю повторную веб-авторизацию");
                                 logger.error(err.stack || err);
                                 RELOGIN = true;
-                                console.log(111);
-                                steamClient.webLogOn();
+                                var t = setInterval(function() {
+                                    if (RELOGIN) {
+                                        steamClient.webLogOn();
+                                    } else {
+                                        clearInterval(t);
+                                    }
+                                }, 3000);
+
                             });
 
                         });
