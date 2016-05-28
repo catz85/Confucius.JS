@@ -1,24 +1,9 @@
 {
-  "logOnOptions": {
-    "accountName": "login",
-    "password": "password",
-    "sharedSecret": "sharedSecret",
-    "identitySecret": "identitySecret",
-    "secret1": "secret1",
-    "revocationCode": "revocationCode"
-  },
-  "admins": [
-    "admin SteamID64"
-  ],
-  "mongodb": {
-    "url": "mongodb://localhost:27017/database-name"
-  },
-  "gameDuration": 180,
-  "rouletteDuration": 10,
-  "nextGameTimer": 15,
-  "appID": 570,
-  "marketLotsRequired": 8,
-  "priceUpdateInterval": 3600,
-  "lastPriceUpdate": 1460378654530,
-  "bptfAPIKey": "backpack.tf API key"
+  "accountName": "login",
+  "password": "password",
+  "sharedSecret": "sharedSecret",
+  "identitySecret": "identitySecret",
+  "sentryFile": "./sentry.txt",
+  "logDirectory": "./logs/confucius",
+  "mongodb": "mongodb://localhost:27017/jackpot"
 }
