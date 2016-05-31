@@ -22,6 +22,19 @@ const ITEM_HANDLING_TIME = 0;
 const RETRY_INTERVAL = 3000;
 const MAX_RETRIES = 5;
 
+const NotificationType = {
+    INFO: 'information',
+    WARNING: 'warning',
+    ERROR: 'error',
+    QUESTION: 'question'
+};
+
+const NotificationTitle = {
+    INFO: '<b>Информация</b><br>',
+    WARNING: '<b>Предупреждение</b><br>',
+    ERROR: '<b>Ошибка</b><br>',
+}
+
 const DeclineReasons = {
     NO_TRADE_LINK: 0,
     ITEMS_TO_GIVE: 1,
@@ -37,12 +50,12 @@ const DeclineReasons = {
     TOO_LITTLE_TIME: 11
 };
 
-const DeclineReasonsDescriptions = ['у пользователя отсутствует трейд-ссылка', 'попытка вывести предметы',
-    'профиль пользователя скрыт', 'обмен содержит предметы из других игр', 'предмета нет на торговой площадке',
-    'слишком мало лотов предмета на торговой площадке', 'ставка меньше минимальной',
-    'обмен содержит слишком много предметов', 'слишком много предметов в одно игре',
-    'слишком много предметов от одного пользователя', 'предложение недействительно',
-    'слишком мало времени до конца игры'];
+const DeclineReasonsDescriptions = ['У пользователя отсутствует трейд-ссылка', 'Попытка вывести предметы',
+    'Профиль пользователя скрыт', 'Обмен содержит предметы из других игр', 'Предмета нет на торговой площадке',
+    'Слишком мало лотов предмета на торговой площадке', 'Ставка меньше минимальной',
+    'Обмен содержит слишком много предметов', 'Слишком много предметов в одной игре',
+    'Слишком много предметов от одного пользователя', 'Предложение недействительно',
+    'Слишком мало времени до конца игры'];
 
 const UserStatus = {DEFAULT: 0, VIP: 1, PREMIUM: 2, ULTIMATE: 3};
 
@@ -69,6 +82,7 @@ function Confucius() {
     this.steamHelper = null;
     this.marketHelper = null;
     this.currentGame = null;
+    this.processedOffers = [];
 }
 
 Confucius.prototype.initInfo = function (callback) {
@@ -103,7 +117,9 @@ Confucius.prototype.start = function () {
             self.socketHandler = new SocketHandler(self.info.port);
             self.socketHandler.setUpListeners();
             self.steamLogon(function () {
-                self.loadCurrentGame(function() {
+                self.loadCurrentGame(function () {
+                    self.setUpSocketListeners();
+                    self.socketHandler.sendToAdmins('gameLoaded');
                     self.setUpGameListeners(self.currentGame);
                     self.checkEatenItems(function () {
                         self.steamHelper.forceCheckTradeOffers(function () {
@@ -121,7 +137,23 @@ Confucius.prototype.start = function () {
 Confucius.prototype.setUpSocketListeners = function () {
     var self = this;
 
-    self.socketHandler.addEventListener('event0', function (arg0) {
+    self.socketHandler.addAdminEventListener('requestStatus', function (socket) {
+        self.currentGame.getAllItems(function (items) {
+            self.currentGame.selectWinner(function (winner) {
+                if (winner) {
+                    self.steamHelper.getSteamUser(winner, function (user) {
+                        socket.emit('statusUpdated', self.currentGame.id, self.currentGame.state,
+                            self.currentGame.currentBank, items.length, Object.keys(self.currentGame.betsByPlayer).length,
+                            self.currentGame.gameTimer, user.name, self.currentGame.float, self.currentGame.hash);
+                    });
+                } else {
+                    socket.emit('statusUpdated', self.currentGame.id, self.currentGame.state,
+                        self.currentGame.currentBank, items.length, Object.keys(self.currentGame.betsByPlayer).length,
+                        self.currentGame.gameTimer, 'Не определён', self.currentGame.float, self.currentGame.hash);
+                }
+
+            });
+        });
 
     });
 
@@ -221,8 +253,8 @@ Confucius.prototype.setUpGameListeners = function (game) {
         self.terminate();
     });
 
-    game.on('notification', function (msg) {
-        self.notifyAdmins(msg, true);
+    game.on('notification', function (msg, type) {
+        self.notifyAdmins(msg, type);
     });
 
     game.on('newGame', function (newGame) {
@@ -321,6 +353,11 @@ Confucius.prototype.steamLogon = function (callback) {
             domain: 'dota2bets.ru'
         };
         self.steamHelper = new SteamHelper(logOnDetails, self.marketHelper, self.logger);
+
+        self.steamHelper.on('loggedIn', function () {
+            self.socketHandler.sendToAdmins('logMsg', 'Авторизован', 'info');
+        });
+
         self.steamHelper.on('terminate', function () {
             self.terminate();
         });
@@ -330,7 +367,7 @@ Confucius.prototype.steamLogon = function (callback) {
         });
 
         self.steamHelper.login(function () {
-            self.notifyAdmins('Авторизация прошла успешно', false);
+            self.notifyAdmins(NotificationTitle.INFO + 'Авторизация прошла успешно', NotificationType.INFO);
             callback();
         });
     });
@@ -338,68 +375,76 @@ Confucius.prototype.steamLogon = function (callback) {
 
 Confucius.prototype.handleTradeOffer = function (offer) {
     var self = this;
-    if (self.info.trading && self.currentGame.state !== Game.State.PAUSED) {
-        if (self.calcTradeOfferProcessingTime(offer.itemsToReceive.length) < self.currentGame.gameTimer * 1000) {
-            self.currentGame.getUserToken(offer.partner.getSteamID64(), function (token) {
-                if (token) {
-                    if (offer.state === 2 && !offer._isGlitched()) {
-                        self.steamHelper.getSteamUser(offer.partner.getSteamID64(), function (user) {
-                            self.notifyAdmins('Получено предложение об обмене #' + offer.id + ' от ' + user.name, true);
-                            if (offer.itemsToGive.length <= 0) {
-                                if (user.privacyState === "public") {
-                                    self.processItems(offer, function (items, totalCost, errorCode) {
-                                        if (errorCode < 0) {
-                                            if (totalCost >= self.info.minBet * 100) {
-                                                if (items.length <= self.info.maxItemsPerTrade) {
-                                                    self.currentGame.getAllItems(function (allItems) {
-                                                        if (items.length +
-                                                            allItems <= self.info.maxItems) {
-                                                            if (!self.currentGame.activeBetters
-                                                                || !self.currentGame.activeBetters[user.steamID.getSteamID64()]
-                                                                || self.currentGame.activeBetters[user.steamID.getSteamID64()].count
-                                                                + items.length <= self.info.maxItemsPerUser) {
-                                                                self.steamHelper.acceptTradeOffer(offer, function (newItems) {
-                                                                    self.notifyAdmins('Предложение #' + offer.id + ' принято', true);
-                                                                    self.currentGame.addBet(user, newItems, totalCost, function () {
-                                                                        self.currentGame.update();
+    if (self.processedOffers.indexOf(offer.id) < 0) {
+        self.processedOffers.push(offer.id);
+        if (self.info.trading && self.currentGame.state !== Game.State.PAUSED) {
+            if (self.calcTradeOfferProcessingTime(offer.itemsToReceive.length) < self.currentGame.gameTimer * 1000) {
+                self.currentGame.getUserToken(offer.partner.getSteamID64(), function (token) {
+                    if (token) {
+                        if (offer.state === 2 && !offer._isGlitched()) {
+                            self.steamHelper.getSteamUser(offer.partner.getSteamID64(), function (user) {
+                                self.notifyAdmins('Получено предложение об обмене #' + offer.id + ' от <font color=orange>'
+                                    + user.name + '</font>', NotificationType.INFO);
+                                self.logger.info('Получено предложение об обмене #' + offer.id + ' от ' + user.name);
+                                if (offer.itemsToGive.length <= 0) {
+                                    if (user.privacyState === "public") {
+                                        self.processItems(offer, function (items, totalCost, errorCode) {
+                                            if (errorCode < 0) {
+                                                if (totalCost >= self.info.minBet * 100) {
+                                                    if (items.length <= self.info.maxItemsPerTrade) {
+                                                        self.currentGame.getAllItems(function (allItems) {
+                                                            if (items.length +
+                                                                allItems.length <= self.info.maxItems) {
+                                                                if (!self.currentGame.betsByPlayer
+                                                                    || !self.currentGame.betsByPlayer[user.steamID.getSteamID64()]
+                                                                    || self.currentGame.betsByPlayer[user.steamID.getSteamID64()].count
+                                                                    + items.length <= self.info.maxItemsPerUser) {
+                                                                    self.steamHelper.acceptTradeOffer(offer, function (newItems) {
+                                                                        self.processedOffers.splice(self.processedOffers.indexOf(offer.id), 1);
+                                                                        self.notifyAdmins(NotificationTitle.INFO + 'Предложение #'
+                                                                            + offer.id + ' принято', NotificationType.INFO);
+                                                                        self.logger.info('Предложение #' + offer.id + ' принято');
+                                                                        self.currentGame.addBet(user, newItems, totalCost, function () {
+                                                                            self.currentGame.update();
+                                                                        });
                                                                     });
-                                                                });
+                                                                } else {
+                                                                    self.declineBet(offer, DeclineReasons.TOO_MANY_ITEMS_FROM_USER);
+                                                                }
                                                             } else {
-                                                                self.declineBet(offer, DeclineReasons.TOO_MANY_ITEMS_FROM_USER);
+                                                                self.declineBet(offer, DeclineReasons.TOO_MANY_ITEMS);
                                                             }
-                                                        } else {
-                                                            self.declineBet(offer, DeclineReasons.TOO_MANY_ITEMS);
-                                                        }
-                                                    });
+                                                        });
+                                                    } else {
+                                                        self.declineBet(offer, DeclineReasons.TOO_MANY_ITEMS_IN_TRADE);
+                                                    }
                                                 } else {
-                                                    self.declineBet(offer, DeclineReasons.TOO_MANY_ITEMS_IN_TRADE);
+                                                    self.declineBet(offer, DeclineReasons.LOW_BET);
                                                 }
                                             } else {
-                                                self.declineBet(offer, DeclineReasons.LOW_BET);
+                                                self.declineBet(offer, errorCode);
                                             }
-                                        } else {
-                                            self.declineBet(offer, errorCode);
-                                        }
-                                    });
+                                        });
+                                    } else {
+                                        self.declineBet(offer, DeclineReasons.PRIVATE_PROFILE);
+                                    }
                                 } else {
-                                    self.declineBet(offer, DeclineReasons.PRIVATE_PROFILE);
+                                    self.declineBet(offer, DeclineReasons.ITEMS_TO_GIVE);
                                 }
-                            } else {
-                                self.declineBet(offer, DeclineReasons.ITEMS_TO_GIVE);
-                            }
-                        });
+                            });
+                        } else {
+                            self.declineBet(offer, DeclineReasons.INVALID_OFFER);
+                        }
                     } else {
-                        self.declineBet(offer, DeclineReasons.INVALID_OFFER);
+                        self.declineBet(offer, DeclineReasons.NO_TRADE_LINK);
                     }
-                } else {
-                    self.declineBet(offer, DeclineReasons.NO_TRADE_LINK);
-                }
-            });
-        } else {
-            self.declineBet(offer, DeclineReasons.TOO_LITTLE_TIME);
+                });
+            } else {
+                self.declineBet(offer, DeclineReasons.TOO_LITTLE_TIME);
+            }
         }
     }
-};
+}
 
 Confucius.prototype.processItems = function (offer, callback) {
     var self = this;
@@ -429,17 +474,17 @@ Confucius.prototype.processItems = function (offer, callback) {
 Confucius.prototype.declineBet = function (offer, reason) {
     var self = this;
     self.steamHelper.declineTradeOffer(offer, function () {
-        self.notifyAdmins('Обмен № ' + offer.id + ' отклонен:\n' + DeclineReasonsDescriptions[reason], true);
+        self.processedOffers.splice(self.processedOffers.indexOf(offer.id), 1);
+        self.notifyAdmins('<b>Обмен отклонен</b><br>' + DeclineReasonsDescriptions[reason], NotificationType.WARNING);
+        self.logger.info('Обмен № ' + offer.id + ' отклонен: ' + DeclineReasonsDescriptions[reason]);
         self.socketHandler.sendToUser(offer.partner.getSteamID64(), 'offerDeclined',
             reason);
     });
 }
 
-Confucius.prototype.notifyAdmins = function (msg, echo) {
+Confucius.prototype.notifyAdmins = function (msg, type) {
     var self = this;
-    if (echo)
-        self.logger.info(msg);
-    self.socketHandler.sendToAdmins('notification', msg)
+    self.socketHandler.sendToAdmins('notification', msg, type);
 }
 
 Confucius.prototype.terminate = function () {
@@ -472,6 +517,12 @@ Confucius.prototype.createLogger = function () {
         return logMessage;
     }
 
+    function formatterFile(args) {
+        var date = moment().format('HH:mm:ss');
+        var logMessage = '[' + date + ' ' + args.level.toUpperCase() + ']: ' + args.message;
+        return logMessage;
+    }
+
     var logDataFile = self.config['logDirectory'] + '/logdata.json';
     var dateString = moment().format('YYYY-MM-DD HH-mm-ss');
     if (fs.existsSync(logDataFile)) {
@@ -497,7 +548,7 @@ Confucius.prototype.createLogger = function () {
                 filename: self.config['logDirectory'] + '/latest.log',
                 handleExceptions: true,
                 json: false,
-                formatter: formatter
+                formatter: formatterFile
             })
         ]
     });

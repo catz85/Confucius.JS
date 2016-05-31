@@ -1,9 +1,9 @@
 {
-  "accountName": "login",
-  "password": "password",
-  "sharedSecret": "sharedSecret",
-  "identitySecret": "identitySecret",
+  "accountName": "dota2betsru",
+  "password": "ZSH1wb55ZSH1wb55",
+  "sharedSecret": "SGSpPz7UF9hy6/tC8gD55QlLgVo=",
+  "identitySecret": "mMbsHJLVWUC+Oox+naMWowIf/hs=",
   "sentryFile": "./sentry.txt",
   "logDirectory": "./logs/confucius",
-  "mongodb": "mongodb://localhost:27017/jackpot"
+  "mongodb": "mongodb://localhost:27017/dota2bets"
 }

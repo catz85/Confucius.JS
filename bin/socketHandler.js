@@ -4,7 +4,7 @@
 
 var async = require('async');
 
-const AUTH_KEY = 'authKey';
+const AUTH_KEY = 'bd2e932a03a19217ab5a1dfb5aa93340';
 
 const MAX_RETRIES = 3;
 
@@ -15,6 +15,7 @@ function SocketHandler(port) {
     this.adminClients = [];
     this.ipCooldown = {};
     this.authorizedClients = {};
+    this.adminListeners = [];
 }
 
 SocketHandler.prototype.setUpListeners = function () {
@@ -26,9 +27,22 @@ SocketHandler.prototype.setUpListeners = function () {
             socket.emit('authSuccess');
             self.adminClients.push(socket);
 
-            socket.on('disconnect', function() {
+            socket.on('disconnect', function () {
                 delete self.adminClients[self.adminClients.indexOf(socket)];
             });
+
+            socket.on('_ping', function () {
+                socket.emit('_pong');
+            });
+
+            self.adminListeners.forEach(function (el) {
+                socket.on(el.event, function () {
+                    var mainArguments = Array.prototype.slice.call(arguments);
+                    mainArguments.unshift(socket);
+                    el.listener.apply(this, mainArguments);
+                });
+            });
+
         } else {
             if (!self.clients[socket.handshake.address]) {
                 self.clients[socket.handshake.address] = [socket];
@@ -68,36 +82,50 @@ SocketHandler.prototype.addEventListener = function (event, listener) {
 
 SocketHandler.prototype.addAdminEventListener = function (event, listener) {
     var self = this;
+    self.adminListeners.push({event: event, listener: listener});
     async.forEachOfSeries(self.adminClients, function (socket, key, callback) {
-        socket.on(event, listener);
+        socket.on(event, function () {
+            var mainArguments = Array.prototype.slice.call(arguments);
+            mainArguments.unshift(socket);
+            listener.apply(this, mainArguments);
+        });
+        callback();
     }, function () {
         return;
     });
 }
 
-SocketHandler.prototype.send = function (event, param) {
-    self.io.emit(event, param);
+SocketHandler.prototype.send = function () {
+    self.io.emit.apply(self.io, arguments);
 }
 
-SocketHandler.prototype.sendToUser = function (steamID, event, param) {
+SocketHandler.prototype.sendToUser = function () {
     var self = this;
-    async.forEachOfSeries(self.authorizedClients, function(client, index, callback) {
-        if (client.steamID === steamID) {
-            client.client.emit(event, param);
+    var args = arguments;
+    async.forEachOfSeries(self.authorizedClients, function (client, index, callback) {
+        if (client.steamID === args[0]) {
+            client.client.emit(args.slice(1, args.length));
         } else
             callback();
-    }, function() {
+    }, function () {
         return;
     });
 }
 
-SocketHandler.prototype.sendToAdmins = function (event, param) {
-    var self = this;
-    async.forEachOfSeries(self.adminClients, function (socket, key, callback) {
-        socket.emit(event, param);
-    }, function () {
-        return;
-    });
+SocketHandler.prototype.sendToAdmins = function () {
+    try {
+        var self = this;
+        var args = arguments;
+        async.forEachOfSeries(self.adminClients, function (socket, key, callback) {
+            socket.emit.apply(socket, args);
+            callback();
+        }, function () {
+            return;
+        });
+    } catch (err) {
+        console.log(err);
+    }
+
 }
 
 module.exports = SocketHandler;

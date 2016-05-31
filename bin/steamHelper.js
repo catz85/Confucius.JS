@@ -159,6 +159,8 @@ SteamHelper.prototype.sendItems = function (user, token, items, msg, callback, n
                 setTimeout(function () {
                     self.sendItems(user, token, items, msg, callback, numRetries);
                 }, RETRY_INTERVAL);
+            } else {
+                callback(err);
             }
         }
     });
@@ -242,6 +244,8 @@ SteamHelper.prototype.getActiveSentTrades = function (callback) {
 
 SteamHelper.prototype.acceptTradeOffer = function (offer, callback, numRetries) {
     var self = this;
+    if (offer.state === 3)
+        callback();
     if (!callback)
         callback = function (arg0) {
             return;
@@ -257,7 +261,14 @@ SteamHelper.prototype.acceptTradeOffer = function (offer, callback, numRetries) 
             if (numRetries < MAX_RETRIES) {
                 self.logger.error('Пытаюсь снова');
                 setTimeout(function () {
-                    self.acceptTradeOffer(offer, callback, numRetries);
+                    self.tradeOfferManager.getOffer(offer.id, function (err, newOffer) {
+                        if (err) {
+                            self.acceptTradeOffer(offer, callback, numRetries);
+                        } else {
+                            self.acceptTradeOffer(newOffer, callback, numRetries);
+                        }
+                    });
+
                 }, RETRY_INTERVAL / 2);
             } else {
                 self.logger.error('Не удалось принять обмен с ' + MAX_RETRIES + ' попыток');
@@ -281,6 +292,8 @@ SteamHelper.prototype.acceptTradeOffer = function (offer, callback, numRetries) 
 
 SteamHelper.prototype.declineTradeOffer = function (offer, callback, numRetries) {
     var self = this;
+    if (offer.state !== 2)
+        callback();
     if (!callback)
         callback = function (arg0) {
         };
@@ -295,10 +308,16 @@ SteamHelper.prototype.declineTradeOffer = function (offer, callback, numRetries)
             if (numRetries < MAX_RETRIES) {
                 self.logger.error('Пытаюсь снова');
                 setTimeout(function () {
-                    self.declineTradeOffer(offer, callback, numRetries);
+                    self.tradeOfferManager.getOffer(offer.id, function (err, updatedOffer) {
+                        if (err) {
+                            self.declineTradeOffer(offer, callback, numRetries);
+                        } else {
+                            self.declineTradeOffer(updatedOffer, callback, numRetries);
+                        }
+                    });
                 }, RETRY_INTERVAL);
             } else {
-                throw new Error('Не удалось потклонить обмен № ' + offer.id + ' с ' + MAX_RETRIES + ' попыток');
+                throw new Error('Не удалось отклонить обмен № ' + offer.id + ' с ' + MAX_RETRIES + ' попыток');
             }
         } else {
             callback();

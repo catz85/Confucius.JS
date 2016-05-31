@@ -13,9 +13,18 @@ const State = {
     WAITING: 0,
     ACTIVE: 1,
     ROLLING: 2,
-    SENT: 3,
-    PAUSED: 4
+    SENDING: 3,
+    SENT: 4,
+    ERROR: 5,
+    PAUSED: 6
 }
+
+const NotificationType = {
+    INFO: 'information',
+    WARNING: 'warning',
+    ERROR: 'error',
+    QUESTION: 'question'
+};
 
 const RETRY_INTERVAL = 3000;
 const MAX_RETRIES = 5;
@@ -74,6 +83,15 @@ Game.createFromDB = function (data, callback, numRetries) {
                         state: gameData.state,
                         pauseTimer: data.pauseTimer
                     });
+                } else {
+                    game.winner = gameData.winner;
+                    game.currentBank = gameData.bank;
+                    game.bets = gameData.bets;
+                    game.float = gameData.float;
+                    game.hash = gameData.hash;
+                    game.startTime = gameData.startTime;
+                    game.state = gameData.state;
+                    game.finishTime = gameData.finishTime;
                 }
                 callback(game);
             } else {
@@ -189,6 +207,8 @@ Game.prototype.setState = function (newState, callback, numRetries) {
                 }
             } else {
                 self.emit('notification', 'Статус игры #' + self.id + ' изменен с ' + Object.keys(State)[self.state] +
+                    ' на ' + Object.keys(State)[newState], NotificationType.INFO);
+                self.logger.info('Статус игры #' + self.id + ' изменен с ' + Object.keys(State)[self.state] +
                     ' на ' + Object.keys(State)[newState]);
                 self.state = newState;
                 if (callback)
@@ -226,11 +246,7 @@ Game.prototype.pause = function (callback) {
         callback = function () {
             return;
         }
-    if (self.state === State.ROLLING)
-        callback(new Error('Запущена рулетка'));
-    else if (self.state === State.PAUSED) {
-        callback(new Error('Игра уже приостановлена'));
-    } else {
+    if (self.state === State.ACTIVE || self.state === State.WAITING) {
         var time = self.gameTimer;
         clearInterval(self.timerID);
         self.db.collection('info').updateOne({name: 'pauseTimer'}, {$set: {value: time}}, {w: 1}, function (err, result) {
@@ -244,6 +260,8 @@ Game.prototype.pause = function (callback) {
                 });
             }
         });
+    } else {
+        callback(new Error('Невозможно приостановить неактивную игру'));
     }
 };
 
@@ -301,7 +319,9 @@ Game.prototype.roll = function (callback) {
                 self.logger);
             self.emit('newGame', newGame);
             self.steamHelper.getSteamUser(winnerID, function (winner) {
-                self.emit('notification', 'Игра #' + self.id + ' завершена, победитель: ' + winner.name);
+                self.logger.info('Игра #' + self.id + ' завершена, победитель: ' + winner.name);
+                self.emit('notification', 'Игра #' + self.id + ' завершена, победитель: <b><font color="#ffd700"' +
+                    winner.name + '</font></b>', NotificationType.INFO);
                 self.emit('roll', winner);
                 var rollTime = Date.now();
                 self.saveFinishTime(function () {
@@ -310,11 +330,15 @@ Game.prototype.roll = function (callback) {
                             var timeout = self.info.spinDuration * 1000 - (Date.now() - rollTime);
                             setTimeout(function () {
                                 self.emit('rollFinished');
-                                self.sendWonItems(wonItems, winner, token, function () {
-                                    self.submit(winner, (self.betsByPlayer[data.winner].totalCost /
-                                    self.currentBank).toFixed(2), function () {
-                                        self.setState(State.SENT);
-                                    })
+                                self.setState(State.SENDING, function () {
+                                    self.sendWonItems(wonItems, winner, token, function (err) {
+                                        self.submit(winner, (self.betsByPlayer[data.winner].totalCost /
+                                        self.currentBank).toFixed(2), function () {
+                                            self.setState(err ? State.ERROR : State.SENT, function () {
+                                                self.fixGameErrors();
+                                            });
+                                        })
+                                    });
                                 });
                             }, timeout > 0 ? timeout : 0);
                         });
@@ -400,7 +424,9 @@ Game.prototype.sortWonItems = function (user, callback) {
                     }
                 }, function () {
                     totalFee = ((totalFee - feeSize) / 100).toFixed(2);
-                    self.emit('notification', 'Размер комиссии: ' + feeItems + ' предметов на сумму ' + totalFee + '$');
+                    self.logger.info('Размер комиссии: ' + feeItems + ' предметов на сумму ' + totalFee + '$');
+                    self.emit('notification', 'Размер комиссии: <b>' + feeItems + '</b> предметов на сумму <b>' +
+                        totalFee + '$</b>', NotificationType.INFO);
                     callback(itemsToSend);
                 });
             });
@@ -511,30 +537,99 @@ Game.prototype.update = function (callback) {
     });
 }
 
+Game.prototype.fixGameErrors = function (callback) {
+    var self = this;
+    self.db.collection('games').find({state: State.ERROR}).toArray(function (err, games) {
+        if (!err) {
+            async.forEachOfSeries(games, function (gameData, index, cb) {
+                var game = Game.createFromDB({
+                    id: gameData.id,
+                    db: self.db,
+                    marketHelper: self.marketHelper,
+                    steamHelper: self.steamHelper,
+                    info: self.info,
+                    logger: self.logger,
+                    infoOnly: true
+                });
+                game.setState(State.SENDING, function () {
+                    self.steamHelper.getSteamUser(game.winner, function (user) {
+                        game.sortWonItems(user, function (items) {
+                            game.sendWonItems(items, user, null, function (err) {
+                                if (err) {
+                                    self.setState(State.ERROR, cb);
+                                } else {
+                                    self.setState(State.SENT, cb);
+                                }
+                            });
+                        });
+                    });
+
+                });
+            }, function () {
+                if (callback)
+                    callback();
+            });
+        } else {
+            self.logger.error('Не удалось получить список игр');
+            self.logger.error(err.stack || err);
+            if (callback)
+                callback();
+        }
+    });
+}
+
 Game.prototype.resume = function (data) {
     var self = this;
     self.state = data.state;
-    if (data.state !== State.PAUSED && data.winner && data.startTime > 0 &&
-        Date.now() - data.startTime >= self.info.gameDuration * 1000 && data.state !== State.ACTIVE) {
-        if (data.state !== State.SENT) {
-            self.steamHelper.getSteamUser(data.winner, function (user) {
-                self.sortWonItems(user, function (items) {
-                    self.sendWonItems(items, user, null, function () {
-                        self.submit(user, (self.betsByPlayer[data.winner].totalCost / self.currentBank).toFixed(2), function () {
+    if (self.state === State.ERROR) {
+        self.steamHelper.getSteamUser(data.winner, function (user) {
+            self.sortWonItems(user, function (items) {
+                self.setState(State.SENDING, function () {
+                    self.sendWonItems(items, user, null, function (err) {
+                        if (err) {
+                            self.setState(State.ERROR, function () {
+                                var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
+                                    self.info, self.logger);
+                                self.emit('newGame', newGame);
+                            });
+                        } else {
                             self.setState(State.SENT, function () {
                                 var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
                                     self.info, self.logger);
                                 self.emit('newGame', newGame);
                             });
-                        });
+                        }
                     });
                 });
             });
-        } else {
-            var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
-                self.info, self.logger);
-            self.emit('newGame', newGame);
-        }
+        });
+
+    } else if (self.state === State.ROLLING || self.state === State.SENDING) {
+        self.steamHelper.getSteamUser(data.winner, function (user) {
+            self.sortWonItems(user, function (items) {
+                self.setState(State.SENDING, function () {
+                    self.sendWonItems(items, user, null, function (err) {
+                        if (err) {
+                            self.setState(State.ERROR, function () {
+                                self.submit(user, (self.betsByPlayer[data.winner].totalCost / self.currentBank).toFixed(2), function () {
+                                    var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
+                                        self.info, self.logger);
+                                    self.emit('newGame', newGame);
+                                });
+                            });
+                        } else {
+                            self.submit(user, (self.betsByPlayer[data.winner].totalCost / self.currentBank).toFixed(2), function () {
+                                self.setState(State.SENT, function () {
+                                    var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
+                                        self.info, self.logger);
+                                    self.emit('newGame', newGame);
+                                });
+                            });
+                        }
+                    });
+                });
+            });
+        });
     } else {
         self.winner = data.winner;
         self.currentBank = data.bank;
@@ -557,7 +652,6 @@ Game.prototype.resume = function (data) {
                 self.update();
             }
         });
-
     }
 }
 
