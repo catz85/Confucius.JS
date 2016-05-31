@@ -27,6 +27,7 @@ function MarketHelper(APIKey, appID, updateInterval, logger) {
 
 MarketHelper.prototype.start = function(callback) {
     var self = this;
+
     if (fs.existsSync(FILE_NAME)) {
         var data = JSON.parse(fs.readFileSync(FILE_NAME, 'utf-8'));
         self.priceData = data.items;
