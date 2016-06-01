@@ -101,6 +101,47 @@ Game.createFromDB = function (data, callback, numRetries) {
     });
 }
 
+
+Game.fixGameErrors = function (db, marketHelper, steamHelper, info, logger, callback) {
+    db.collection('games').find({state: State.ERROR}).toArray(function (err, games) {
+        if (!err) {
+            async.forEachOfSeries(games, function (gameData, index, cb) {
+                var game = Game.createFromDB({
+                    id: gameData.id,
+                    db: db,
+                    marketHelper: marketHelper,
+                    steamHelper: steamHelper,
+                    info: info,
+                    logger: logger,
+                    infoOnly: true
+                });
+                game.setState(State.SENDING, function () {
+                    steamHelper.getSteamUser(game.winner, function (user) {
+                        game.sortWonItems(user, function (items) {
+                            game.sendWonItems(items, user, null, function (err) {
+                                if (err) {
+                                    game.setState(State.ERROR, cb);
+                                } else {
+                                    game.setState(State.SENT, cb);
+                                }
+                            });
+                        });
+                    });
+
+                });
+            }, function () {
+                if (callback)
+                    callback();
+            });
+        } else {
+            logger.error('Не удалось получить список игр');
+            logger.error(err.stack || err);
+            if (callback)
+                callback();
+        }
+    });
+}
+
 Game.prototype.addBet = function (better, items, totalCost, callback, numRetries) {
     var self = this;
     var itemsArray = [];
@@ -318,12 +359,12 @@ Game.prototype.roll = function (callback) {
         self.selectWinner(function (winnerID) {
             var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper, self.info,
                 self.logger);
-            self.emit('newGame', newGame);
             self.steamHelper.getSteamUser(winnerID, function (winner) {
                 self.logger.info('Игра #' + self.id + ' завершена, победитель: ' + winner.name);
                 self.emit('notification', 'Игра #' + self.id + ' завершена, победитель: <b><font color="#ffd700"' +
                     winner.name + '</font></b>', NotificationType.INFO);
                 self.emit('roll', winner);
+                self.finishTime = Date.now();
                 var rollTime = Date.now();
                 self.saveFinishTime(function () {
                     self.sortWonItems(winner, function (wonItems) {
@@ -336,7 +377,9 @@ Game.prototype.roll = function (callback) {
                                         self.submit(winner, (self.betsByPlayer[data.winner].totalCost /
                                         self.currentBank).toFixed(2), function () {
                                             self.setState(err ? State.ERROR : State.SENT, function () {
-                                                self.fixGameErrors();
+                                                self.emit('newGame', newGame);
+                                                Game.fixGameErrors(self.db, self.marketHelper,
+                                                    self.steamHelper, self.info, self.logger);
                                             });
                                         })
                                     });
@@ -528,13 +571,13 @@ Game.prototype.update = function (callback) {
                         self.getAllItems(function (items) {
                             if (items.length === self.info.maxItems) {
                                 self.emit('updated');
-                                self.roll(function() {
+                                self.roll(function () {
                                     self.emit('updated');
                                     callback();
                                 });
                             } else if (self.state === State.PAUSED) {
                                 self.gameTimer = self.info.gameDuration;
-                                self.setState(State.WAITING, function() {
+                                self.setState(State.WAITING, function () {
                                     self.emit('updated');
                                     callback();
                                 });
@@ -547,47 +590,6 @@ Game.prototype.update = function (callback) {
                     }
                 })
             });
-        }
-    });
-}
-
-Game.prototype.fixGameErrors = function (callback) {
-    var self = this;
-    self.db.collection('games').find({state: State.ERROR}).toArray(function (err, games) {
-        if (!err) {
-            async.forEachOfSeries(games, function (gameData, index, cb) {
-                var game = Game.createFromDB({
-                    id: gameData.id,
-                    db: self.db,
-                    marketHelper: self.marketHelper,
-                    steamHelper: self.steamHelper,
-                    info: self.info,
-                    logger: self.logger,
-                    infoOnly: true
-                });
-                game.setState(State.SENDING, function () {
-                    self.steamHelper.getSteamUser(game.winner, function (user) {
-                        game.sortWonItems(user, function (items) {
-                            game.sendWonItems(items, user, null, function (err) {
-                                if (err) {
-                                    self.setState(State.ERROR, cb);
-                                } else {
-                                    self.setState(State.SENT, cb);
-                                }
-                            });
-                        });
-                    });
-
-                });
-            }, function () {
-                if (callback)
-                    callback();
-            });
-        } else {
-            self.logger.error('Не удалось получить список игр');
-            self.logger.error(err.stack || err);
-            if (callback)
-                callback();
         }
     });
 }

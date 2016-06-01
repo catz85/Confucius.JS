@@ -98,6 +98,7 @@ SocketHandler.prototype.addAdminEventListener = function (event, listener) {
 }
 
 SocketHandler.prototype.send = function () {
+    var self = this;
     self.io.emit.apply(self.io, arguments);
 }
 
