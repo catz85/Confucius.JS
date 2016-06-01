@@ -211,6 +211,7 @@ Game.prototype.setState = function (newState, callback, numRetries) {
                 self.logger.info('Статус игры #' + self.id + ' изменен с ' + Object.keys(State)[self.state] +
                     ' на ' + Object.keys(State)[newState]);
                 self.state = newState;
+                self.emit('stateChanged');
                 if (callback)
                     callback();
             }
@@ -261,7 +262,7 @@ Game.prototype.pause = function (callback) {
             }
         });
     } else {
-        callback(new Error('Невозможно приостановить неактивную игру'));
+        callback('Невозможно приостановить неактивную игру');
     }
 };
 
@@ -286,7 +287,7 @@ Game.prototype.unpause = function (callback) {
             }
         });
     } else {
-        callback(new Error('Игра не приостановлена'));
+        callback('Игра не приостановлена');
     }
 }
 
@@ -505,7 +506,7 @@ Game.prototype.update = function (callback) {
         } else {
             self.sortBetsByPlayer(function () {
                 self.recalculateChance(function () {
-                    if (self.state === State.WAITING && Object.keys(self.betsByPlayer).length >= 2) {
+                    if ((self.state === State.WAITING || self.state === State.PAUSED) && Object.keys(self.betsByPlayer).length >= 2) {
                         var start = Date.now();
                         self.db.collection('games').updateOne({id: self.id}, {$set: {startTime: start}}, {w: 1}, function (err1, result) {
                             if (err1) {
@@ -518,14 +519,27 @@ Game.prototype.update = function (callback) {
                                 if (self.gameTimer <= 0)
                                     self.gameTimer = self.info.gameDuration;
                                 self.startTimer();
-                                callback();
+                                self.emit('updated');
+                                if (callback)
+                                    callback();
                             }
                         });
                     } else {
                         self.getAllItems(function (items) {
                             if (items.length === self.info.maxItems) {
-                                self.roll(callback);
+                                self.emit('updated');
+                                self.roll(function() {
+                                    self.emit('updated');
+                                    callback();
+                                });
+                            } else if (self.state === State.PAUSED) {
+                                self.gameTimer = self.info.gameDuration;
+                                self.setState(State.WAITING, function() {
+                                    self.emit('updated');
+                                    callback();
+                                });
                             } else {
+                                self.emit('updated');
                                 if (callback)
                                     callback();
                             }

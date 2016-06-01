@@ -138,25 +138,45 @@ Confucius.prototype.setUpSocketListeners = function () {
     var self = this;
 
     self.socketHandler.addAdminEventListener('requestStatus', function (socket) {
-        self.currentGame.getAllItems(function (items) {
-            self.currentGame.selectWinner(function (winner) {
-                if (winner) {
-                    self.steamHelper.getSteamUser(winner, function (user) {
-                        socket.emit('statusUpdated', self.currentGame.id, self.currentGame.state,
-                            self.currentGame.currentBank, items.length, Object.keys(self.currentGame.betsByPlayer).length,
-                            self.currentGame.gameTimer, user.name, self.currentGame.float, self.currentGame.hash);
-                    });
-                } else {
-                    socket.emit('statusUpdated', self.currentGame.id, self.currentGame.state,
-                        self.currentGame.currentBank, items.length, Object.keys(self.currentGame.betsByPlayer).length,
-                        self.currentGame.gameTimer, 'Не определён', self.currentGame.float, self.currentGame.hash);
-                }
+        self.sendStatus(socket);
+    });
 
-            });
-        });
+    self.socketHandler.addAdminEventListener('requestDB', function(socket) {
 
     });
 
+    self.socketHandler.addAdminEventListener('pause', function (socket) {
+        self.currentGame.pause(function (err) {
+            socket.emit('paused', err);
+        });
+    });
+
+    self.socketHandler.addAdminEventListener('unpause', function (socket) {
+        self.currentGame.unpause(function (err) {
+            socket.emit('unpaused', self.currentGame.state, err);
+        });
+    });
+
+}
+
+Confucius.prototype.sendStatus = function (socket) {
+    var self = this;
+    self.currentGame.getAllItems(function (items) {
+        self.currentGame.selectWinner(function (winner) {
+            if (winner) {
+                self.steamHelper.getSteamUser(winner, function (user) {
+                    socket.emit('statusUpdated', self.currentGame.id, self.currentGame.state,
+                        self.currentGame.currentBank, items.length, Object.keys(self.currentGame.betsByPlayer).length,
+                        self.currentGame.gameTimer, user.name, self.currentGame.float, self.currentGame.hash);
+                });
+            } else {
+                socket.emit('statusUpdated', self.currentGame.id, self.currentGame.state,
+                    self.currentGame.currentBank, items.length, Object.keys(self.currentGame.betsByPlayer).length,
+                    self.currentGame.gameTimer, 'Не определён', self.currentGame.float, self.currentGame.hash);
+            }
+
+        });
+    });
 }
 
 Confucius.prototype.checkEatenItems = function (callback) {
@@ -256,6 +276,18 @@ Confucius.prototype.setUpGameListeners = function (game) {
     game.on('notification', function (msg, type) {
         self.notifyAdmins(msg, type);
     });
+
+    game.on('updated', function () {
+        self.socketHandler.adminClients.forEach(function(socket) {
+           self.sendStatus(socket);
+        });
+    });
+
+    game.on('stateChanged', function() {
+        self.socketHandler.adminClients.forEach(function(socket) {
+            self.sendStatus(socket);
+        });
+    })
 
     game.on('newGame', function (newGame) {
         self.saveGameAsCurrent(newGame, function () {

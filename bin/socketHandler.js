@@ -6,8 +6,6 @@ var async = require('async');
 
 const AUTH_KEY = 'bd2e932a03a19217ab5a1dfb5aa93340';
 
-const MAX_RETRIES = 3;
-
 function SocketHandler(port) {
     this.app = require('http').createServer().listen(port);
     this.io = require('socket.io')(this.app);
@@ -28,7 +26,7 @@ SocketHandler.prototype.setUpListeners = function () {
             self.adminClients.push(socket);
 
             socket.on('disconnect', function () {
-                delete self.adminClients[self.adminClients.indexOf(socket)];
+                self.adminClients.splice(self.adminClients.indexOf(socket), 1);
             });
 
             socket.on('_ping', function () {
@@ -52,8 +50,10 @@ SocketHandler.prototype.setUpListeners = function () {
                     socket.disconnect();
                 }
                 delete self.clients[socket.handshake.address][self.clients[socket.handshake.address].indexOf(socket)];
-                if (self.clients[socket.handshake.address].length === 0)
+                if (self.clients[socket.handshake.address].length === 0) {
                     delete self.clients[socket.handshake.address];
+                }
+
             }
 
             self.io.emit('online', Object.keys(self.clients).length);
@@ -62,8 +62,10 @@ SocketHandler.prototype.setUpListeners = function () {
                 delete self.clients[socket.handshake.address][self.clients[socket.handshake.address].indexOf(socket)];
                 if (self.clients[socket.handshake.address].length === 0) {
                     delete self.clients[socket.handshake.address];
-                    if (self.authorizedClients[socket.handshake.address])
+                    if (self.authorizedClients[socket.handshake.address]) {
                         delete self.authorizedClients[socket.handshake.address];
+                    }
+
                 }
                 self.io.emit('online', Object.keys(self.clients).length);
             });
@@ -113,18 +115,14 @@ SocketHandler.prototype.sendToUser = function () {
 }
 
 SocketHandler.prototype.sendToAdmins = function () {
-    try {
-        var self = this;
-        var args = arguments;
-        async.forEachOfSeries(self.adminClients, function (socket, key, callback) {
-            socket.emit.apply(socket, args);
-            callback();
-        }, function () {
-            return;
-        });
-    } catch (err) {
-        console.log(err);
-    }
+    var self = this;
+    var args = arguments;
+    async.forEachOfSeries(self.adminClients, function (socket, key, callback) {
+        socket.emit.apply(socket, args);
+        callback();
+    }, function () {
+        return;
+    });
 
 }
 
