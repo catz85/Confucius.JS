@@ -50,7 +50,7 @@ SteamHelper.prototype.login = function (callback) {
             self.logger.error('Авторизация не удалась');
             self.terminate();
         }
-    }, RETRY_INTERVAL);
+    }, RETRY_INTERVAL * 2);
     self.steamUser.logOn(details);
 }
 
@@ -160,7 +160,7 @@ SteamHelper.prototype.sendItems = function (user, token, items, msg, callback, n
                     self.sendItems(user, token, items, msg, callback, numRetries);
                 }, RETRY_INTERVAL);
             } else {
-                callback(err);
+                callback(null, err);
             }
         }
     });

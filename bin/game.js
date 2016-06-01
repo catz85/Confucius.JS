@@ -56,6 +56,10 @@ function Game(id, db, marketHelper, steamHelper, info, logger) {
 
 Game.State = State;
 
+Game.setOldGameListener = function(listener) {
+    Game.oldGameListener = listener;
+}
+
 Game.createFromDB = function (data, callback, numRetries) {
     data.db.collection('games').find({id: data.id}).toArray(function (err, items) {
         if (err) {
@@ -105,28 +109,31 @@ Game.fixGameErrors = function (db, marketHelper, steamHelper, info, logger, call
     db.collection('games').find({state: State.ERROR}).toArray(function (err, games) {
         if (!err) {
             async.forEachOfSeries(games, function (gameData, index, cb) {
-                var game = Game.createFromDB({
+                Game.createFromDB({
                     id: gameData.id,
                     db: db,
                     marketHelper: marketHelper,
                     steamHelper: steamHelper,
                     info: info,
                     logger: logger,
+                    pauseTimer: -1,
                     infoOnly: true
-                });
-                game.setState(State.SENDING, function () {
-                    steamHelper.getSteamUser(game.winner, function (user) {
-                        game.sortWonItems(user, function (items) {
-                            game.sendWonItems(items, user, null, function (err) {
-                                if (err) {
-                                    game.setState(State.ERROR, cb);
-                                } else {
-                                    game.setState(State.SENT, cb);
-                                }
+                }, function (game) {
+                    Game.oldGameListener(game);
+                    game.setState(State.SENDING, function () {
+                        steamHelper.getSteamUser(gameData.winner, function (user) {
+                            game.sortWonItems(user, function (items) {
+                                game.sendWonItems(items, user, null, function (offer, err) {
+                                    if (err) {
+                                        game.setState(State.ERROR, cb);
+                                    } else {
+                                        game.setState(State.SENT, cb);
+                                    }
+                                });
                             });
                         });
-                    });
 
+                    });
                 });
             }, function () {
                 if (callback)
@@ -323,14 +330,14 @@ Game.prototype.unpause = function (callback) {
                 self.gameTimer = timer;
                 self.update(function () {
                     callback(null);
-                }, timer);
+                });
             }
         });
     } else {
         callback('Игра не приостановлена');
     }
 }
- 
+
 Game.prototype.saveFinishTime = function (time, callback, numRetries) {
     var self = this;
     var id = self.id;
@@ -356,6 +363,7 @@ Game.prototype.roll = function (callback) {
     var self = this;
     self.setState(State.ROLLING, function () {
         self.selectWinner(function (winnerID) {
+            self.winner = winnerID;
             var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper, self.info,
                 self.logger);
             self.steamHelper.getSteamUser(winnerID, function (winner) {
@@ -365,15 +373,16 @@ Game.prototype.roll = function (callback) {
                 self.emit('roll', winner);
                 self.finishTime = Date.now();
                 var rollTime = Date.now();
-                self.saveFinishTime(function () {
+                self.finishTime = Date.now();
+                self.saveFinishTime(self.finishTime, function () {
                     self.sortWonItems(winner, function (wonItems) {
                         self.getUserToken(winnerID, function (token) {
                             var timeout = self.info.spinDuration * 1000 - (Date.now() - rollTime);
                             setTimeout(function () {
                                 self.emit('rollFinished');
                                 self.setState(State.SENDING, function () {
-                                    self.sendWonItems(wonItems, winner, token, function (err) {
-                                        self.submit(winner, (self.betsByPlayer[data.winner].totalCost /
+                                    self.sendWonItems(wonItems, winner, token, function (offer, err) {
+                                        self.submit(winner, (self.betsByPlayer[winnerID].totalCost /
                                         self.currentBank).toFixed(2), function () {
                                             self.setState(err ? State.ERROR : State.SENT, function () {
                                                 self.emit('newGame', newGame);
@@ -528,11 +537,11 @@ Game.prototype.sendWonItems = function (items, winner, token, callback) {
     var self = this;
     if (token === null)
         self.getUserToken(winner.steamID.getSteamID64(), function (userToken) {
-            self.steamHelper.sendItems(winner, userToken, items, 'Ваш выигрыш на сайте ' +
+            self.steamHelper.sendItems(winner.steamID.getSteamID64(), userToken, items, 'Ваш выигрыш на сайте ' +
                 'DOTA2BETS.RU в игре №' + self.id, callback);
         });
     else {
-        self.steamHelper.sendItems(winner, token, items, 'Ваш выигрыш на сайте ' +
+        self.steamHelper.sendItems(winner.steamID.getSteamID64(), token, items, 'Ваш выигрыш на сайте ' +
             'DOTA2BETS.RU в игре №' + self.id, callback);
     }
 }
@@ -548,7 +557,7 @@ Game.prototype.update = function (callback) {
         } else {
             self.sortBetsByPlayer(function () {
                 self.recalculateChance(function () {
-                    if ((self.state === State.WAITING || self.state === State.PAUSED) && Object.keys(self.betsByPlayer).length >= 2) {
+                    if (self.state === State.WAITING && Object.keys(self.betsByPlayer).length >= 2) {
                         var start = Date.now();
                         self.db.collection('games').updateOne({id: self.id}, {$set: {startTime: start}}, {w: 1}, function (err1, result) {
                             if (err1) {
@@ -565,6 +574,15 @@ Game.prototype.update = function (callback) {
                                 if (callback)
                                     callback();
                             }
+                        });
+                    } else if (self.state === State.PAUSED && Object.keys(self.betsByPlayer).length >= 2) {
+                        if (self.gameTimer <= 0)
+                            self.gameTimer = self.info.gameDuration;
+                        self.setState(State.ACTIVE, function() {
+                            self.startTimer();
+                            self.emit('updated');
+                            if (callback)
+                                callback();
                         });
                     } else {
                         self.getAllItems(function (items) {
@@ -600,7 +618,7 @@ Game.prototype.resume = function (data) {
         self.steamHelper.getSteamUser(data.winner, function (user) {
             self.sortWonItems(user, function (items) {
                 self.setState(State.SENDING, function () {
-                    self.sendWonItems(items, user, null, function (err) {
+                    self.sendWonItems(items, user, null, function (offer, err) {
                         if (err) {
                             self.setState(State.ERROR, function () {
                                 var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
@@ -623,7 +641,7 @@ Game.prototype.resume = function (data) {
         self.steamHelper.getSteamUser(data.winner, function (user) {
             self.sortWonItems(user, function (items) {
                 self.setState(State.SENDING, function () {
-                    self.sendWonItems(items, user, null, function (err) {
+                    self.sendWonItems(items, user, null, function (offer, err) {
                         if (err) {
                             self.setState(State.ERROR, function () {
                                 self.submit(user, (self.betsByPlayer[data.winner].totalCost / self.currentBank).toFixed(2), function () {

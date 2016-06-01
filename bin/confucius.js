@@ -117,6 +117,9 @@ Confucius.prototype.start = function () {
             self.socketHandler = new SocketHandler(self.info.port);
             self.socketHandler.setUpListeners();
             self.steamLogon(function () {
+                Game.setOldGameListener(function(game) {
+                    self.setUpGameListeners(game);
+                });
                 self.loadCurrentGame(function () {
                     Game.fixGameErrors(self.db, self.marketHelper, self.steamHelper, {
                         gameDuration: self.info.gameDuration,
@@ -222,7 +225,7 @@ Confucius.prototype.checkEatenItems = function (callback) {
                 return result;
             }, {});
             self.steamHelper.getLastReceivedItems(timeCutoff, function (offers, cost) {
-                if (data.length > 0) {
+                if (offers.length > 0) {
                     async.forEachOfSeries(offers, function (data, index, cbf) {
                         if (!allItems[data.items[0].id]) {
                             self.currentGame.addBet(data.owner, data.items, data.cost, function () {
