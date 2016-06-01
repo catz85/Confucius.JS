@@ -330,7 +330,7 @@ Game.prototype.unpause = function (callback) {
         callback('Игра не приостановлена');
     }
 }
-
+ 
 Game.prototype.saveFinishTime = function (time, callback, numRetries) {
     var self = this;
     var id = self.id;
