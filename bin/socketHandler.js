@@ -124,7 +124,6 @@ SocketHandler.prototype.sendToAdmins = function () {
     }, function () {
         return;
     });
-
 }
 
 module.exports = SocketHandler;

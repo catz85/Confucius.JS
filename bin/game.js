@@ -101,7 +101,6 @@ Game.createFromDB = function (data, callback, numRetries) {
     });
 }
 
-
 Game.fixGameErrors = function (db, marketHelper, steamHelper, info, logger, callback) {
     db.collection('games').find({state: State.ERROR}).toArray(function (err, games) {
         if (!err) {
