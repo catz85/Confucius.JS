@@ -29,14 +29,24 @@ MarketHelper.prototype.start = function(callback) {
     var self = this;
 
     if (fs.existsSync(FILE_NAME)) {
-        var data = JSON.parse(fs.readFileSync(FILE_NAME, 'utf-8'));
-        self.priceData = data.items;
-        self.lastUpdate = data.last_update;
-        if (Date.now() - self.lastUpdate >= self.updateInterval) {
+        try {
+            var data = JSON.parse(fs.readFileSync(FILE_NAME, 'utf-8'));
+            if (data.items && data.last_update) {
+                self.priceData = data.items;
+                self.lastUpdate = data.last_update;
+                if (Date.now() - self.lastUpdate >= self.updateInterval) {
+                    self.cachePrices(callback);
+                } else {
+                    if (callback)
+                        callback();
+                }
+            } else {
+                self.lastUpdate = 0;
+                self.cachePrices(callback);
+            }
+        } catch (err) {
+            self.lastUpdate = 0;
             self.cachePrices(callback);
-        } else {
-            if (callback)
-                callback();
         }
     } else {
         self.lastUpdate = 0;
@@ -50,13 +60,13 @@ MarketHelper.prototype.getItemData = function (marketHashName) {
 
 MarketHelper.prototype.cachePrices = function (callback) {
     var self = this;
-    self.logger.info('Идет кэширование цен, может занять до 1 минуты');
+    self.logger.info('market.caching');
     var url = WEB_URL + self.appID + '&key=' + self.APIKey;
     request(url, function (err, response, body) {
         if (err) {
-            self.logger.error('Не удалось прокэшировать цены');
+            self.logger.error('market.error');
             self.logger.error(err.stack || err);
-            self.logger.error('Повторная попытка через 3с.');
+            self.logger.error('error.retrying');
             setTimeout(function () {
                 self.cachePrices(callback);
             }, RETRY_INTERVAL);
@@ -67,16 +77,16 @@ MarketHelper.prototype.cachePrices = function (callback) {
                 self.lastUpdate = Date.now();
                 var output = {last_update: self.lastUpdate, items: self.priceData};
                 fs.writeFileSync(FILE_NAME, JSON.stringify(output, null, 3), 'utf-8');
-                self.logger.info('Цены успешно прокэшированы');
+                self.logger.info('market.cached');
                 self.taskID = setTimeout(function () {
                     self.cachePrices();
                 }, self.updateInterval);
                 if (callback)
                     callback();
             } else {
-                self.logger.error('Не удалось прокэшировать цены:');
+                self.logger.error('market.error');
                 self.logger.error(data.response.message);
-                self.logger.error('Повторная попытка через 3с.');
+                self.logger.error('error.retrying');
                 setTimeout(function () {
                     self.cachePrices(callback);
                 }, RETRY_INTERVAL);

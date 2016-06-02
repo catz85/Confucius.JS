@@ -41,13 +41,13 @@ SteamHelper.prototype.login = function (callback) {
     var self = this;
     var details = self.accountDetails;
     self.tempData.authCallback = callback;
-    self.logger.info('Установлен пользователь: ' + details.accountName);
+    self.logger.info('steam.user', {"%user%": details.accountName});
     details.twoFactorCode = SteamTotp.generateAuthCode(details.sharedSecret);
-    self.logger.info('Авторизация');
+    self.logger.info('steam.loggingIn');
     self.steamUser.setSentry(fs.readFileSync(details.sentry));
     setTimeout(function () {
         if (!self.loggedIn) {
-            self.logger.error('Авторизация не удалась');
+            self.logger.error('steam.error.login');
             self.terminate();
         }
     }, RETRY_INTERVAL * 2);
@@ -63,7 +63,7 @@ SteamHelper.prototype.loadMyInventory = function (appID, callback, numRetries) {
     var self = this;
     self.tradeOfferManager.loadInventory(appID, 2, true, function (err, items) {
         if (err) {
-            self.logger.error('Не удалось загрузить инвентарь');
+            self.logger.error('steam.error.inventory');
             self.logger.error(err.stack || err);
             if (!numRetries)
                 numRetries = 1;
@@ -73,8 +73,10 @@ SteamHelper.prototype.loadMyInventory = function (appID, callback, numRetries) {
                 setTimeout(function () {
                     self.loadMyInventory(appID, callback, numRetries);
                 }, RETRY_INTERVAL / 2);
-            else
+            else {
+                self.logger.error('steam.error.inventoryRetries', {"%i%": MAX_RETRIES});
                 self.terminate();
+            }
         } else {
             callback(items);
         }
@@ -107,20 +109,20 @@ SteamHelper.prototype.setUpListeners = function () {
 
         self.tradeOfferManager.setCookies(cookies, function (err) {
             if (err) {
-                self.logger.error('Не удалось получить API key');
+                self.logger.error('error.steam.apiKey');
                 self.logger.error(err.stack || err);
                 self.terminate();
                 return;
             } else {
-                self.logger.info('Получен API key: ' + self.tradeOfferManager.apiKey);
+                self.logger.info('steam.apiKey', {"%s%": self.tradeOfferManager.apiKey});
                 self.steamCommunity.setCookies(cookies);
                 if (!self.loggedIn) {
                     self.loggedIn = true;
                 } else {
                     self.steamCommunity.startConfirmationChecker(30000, self.accountDetails['identitySecret']);
                     self.steamCommunity.on('sessionExpired', function (err) {
-                        self.logger.error('Истекло время сессии');
-                        self.logger.error('Выполняю повторную веб-авторизацию');
+                        self.logger.error('error.steam.expired');
+                        self.logger.error('error.steam.re-login');
                         self.logger.error(err.stack || err);
                         self.loggedIn = false;
                         setTimeout(function () {
@@ -153,13 +155,14 @@ SteamHelper.prototype.sendItems = function (user, token, items, msg, callback, n
                 numRetries = 1;
             else
                 numRetries++;
-            self.logger.error('Не удалось отправить трейд');
+            self.logger.error('error.steam.sendTrade');
             self.logger.error(err.stack || err);
             if (numRetries < MAX_RETRIES) {
                 setTimeout(function () {
                     self.sendItems(user, token, items, msg, callback, numRetries);
                 }, RETRY_INTERVAL);
             } else {
+                self.logger.error('steam.error.sendTradeRetries', {"%i%": MAX_RETRIES});
                 callback(null, err);
             }
         }
@@ -178,15 +181,16 @@ SteamHelper.prototype.getTradeOffers = function (filter, callback, numRetries) {
                 numRetries = 1;
             else
                 numRetries++;
-            self.logger.error('Ошибка при загрузке обменов');
+            self.logger.error('steam.error.loadOffers');
             self.logger.error(err.stack || err);
             if (depth < MAX_RETRIES) {
-                self.logger.error('Пытаюсь снова');
+                self.logger.error('error.retrying');
                 setTimeout(function () {
                     self.getActiveSentTrades(callback, numRetries);
                 }, RETRY_INTERVAL / 2);
             } else {
-                throw new Error('Не удалось загрузить информацию об обменах с ' + MAX_RETRIES + ' попыток');
+                self.logger.error('steam.error.loadOffersRetries', {"%i%": MAX_RETRIES});
+                self.terminate();
             }
         } else {
             callback(sentOffers, receivedOffers);
@@ -252,7 +256,7 @@ SteamHelper.prototype.acceptTradeOffer = function (offer, callback, numRetries) 
         };
     offer.accept(function (err) {
         if (err) {
-            self.logger.error('Не удалось принять обмен');
+            self.logger.error('steam.error.acceptOffer');
             self.logger.error(err.stack || err);
             if (!numRetries || numRetries === 0)
                 numRetries = 1;
@@ -271,7 +275,7 @@ SteamHelper.prototype.acceptTradeOffer = function (offer, callback, numRetries) 
 
                 }, RETRY_INTERVAL / 2);
             } else {
-                self.logger.error('Не удалось принять обмен с ' + MAX_RETRIES + ' попыток');
+                self.logger.error('steam.error.acceptOfferRetries', {"%i%": MAX_RETRIES});
                 self.emit('acceptingError', offer);
             }
         } else {
@@ -299,14 +303,14 @@ SteamHelper.prototype.declineTradeOffer = function (offer, callback, numRetries)
         };
     offer.decline(function (err) {
         if (err) {
-            self.logger.error('Не удалось отклонить обмен');
+            self.logger.error('steam.error.declineOffer');
             self.logger.error(err.stack || err);
             if (!numRetries || numRetries === 0)
                 numRetries = 1;
             else
                 numRetries++;
             if (numRetries < MAX_RETRIES) {
-                self.logger.error('Пытаюсь снова');
+                self.logger.error('error.retrying');
                 setTimeout(function () {
                     self.tradeOfferManager.getOffer(offer.id, function (err, updatedOffer) {
                         if (err) {
@@ -317,7 +321,8 @@ SteamHelper.prototype.declineTradeOffer = function (offer, callback, numRetries)
                     });
                 }, RETRY_INTERVAL);
             } else {
-                throw new Error('Не удалось отклонить обмен № ' + offer.id + ' с ' + MAX_RETRIES + ' попыток');
+                self.logger.error('steam.error.declineOfferRetries', {"%i%": MAX_RETRIES});
+                self.terminate();
             }
         } else {
             callback();
@@ -334,19 +339,20 @@ SteamHelper.prototype.getLastReceivedItems = function (timeCutoff, callback, num
             if (offer.state === 3 && offer.updated.getTime() > timeCutoff) {
                 offer.getReceivedItems(false, function (err, newItems) {
                     if (err) {
-                        self.logger.error('Ошибка при загрузке предметов');
+                        self.logger.error('steam.error.loadItems');
                         self.logger.error(err.stack || err);
                         if (numRetries || numRetries === 0)
                             numRetries = 1;
                         else
                             numRetries++;
                         if (numRetries < MAX_RETRIES) {
-                            self.logger.error('Пытаюсь снова');
+                            self.logger.error('error.retrying');
                             setTimeout(function () {
                                 self.getLastReceivedItems(timeCutoff, callback, numRetries);
                             }, RETRY_INTERVAL);
                         } else {
-                            throw new Error('Не удалось загрузить предметы с ' + MAX_RETRIES + ' попыток');
+                            self.logger.error('steam.error.loadItemsRetries', {"%i%": MAX_RETRIES});
+                            self.terminate();
                         }
                     } else {
                         var items = [];
@@ -386,7 +392,7 @@ SteamHelper.prototype.getSteamUser = function (steamID64, callback, numRetries) 
         };
     self.steamCommunity.getSteamUser(new SteamCommunity.SteamID(steamID64), function (err, user) {
         if (err) {
-            self.logger.error('Ошибка при получении данных пользователя ' + steamID64);
+            self.logger.error('steam.error.userData', {"%s%": steamID64});
             self.logger.error(err.stack || err);
             if (!numRetries || numRetries === 0)
                 numRetries = 1;
@@ -398,7 +404,8 @@ SteamHelper.prototype.getSteamUser = function (steamID64, callback, numRetries) 
                     self.getSteamUser(steamID64, callback, numRetries);
                 }, 3000);
             } else {
-                throw new Error('Не удалось получить данные пользователя ' + steamID64 + ' с ' + MAX_RETRIES + ' попыток');
+                self.logger.error('steam.error.userDataRetries', {"%i%": MAX_RETRIES, "%s%": steamID64});
+                self.terminate();
             }
         } else {
             callback(user);

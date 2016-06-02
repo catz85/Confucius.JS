@@ -70,8 +70,9 @@ Game.createFromDB = function (data, callback, numRetries) {
                 numRetries++;
             if (numRetries < MAX_RETRIES)
                 Game.createFromDB(data, callback, numRetries);
-            else
-                throw new Error('Не удалось получить информацию из б/д');
+            else {
+                callback(null, null, new Error('game.error.db'));
+            }
         } else {
             if (items.length > 0) {
                 var gameData = items[0];
@@ -139,7 +140,7 @@ Game.fixGameErrors = function (db, marketHelper, steamHelper, info, logger, call
                     callback();
             });
         } else {
-            logger.error('Не удалось получить список игр');
+            logger.error('game.error.list');
             logger.error(err.stack || err);
             if (callback)
                 callback();
@@ -176,7 +177,7 @@ Game.prototype.addBet = function (better, items, totalCost, callback, numRetries
         };
         self.db.collection('games').updateOne({id: self.id}, {$push: {bets: bet}}, {w: 1}, function (err, result) {
             if (err) {
-                self.logger.error('Ошибка при внесении ставки в базу данных');
+                self.logger.error('game.error.bet');
                 self.logger.error(err.stack || err);
                 if (numRetries)
                     numRetries = 1;
@@ -242,10 +243,10 @@ Game.prototype.setState = function (newState, callback, numRetries) {
                     numRetries = 1;
                 else
                     numRetries++;
-                self.logger.error('Не удалось обновить статус игры #' + self.id);
+                self.logger.error('game.error.state', {"%id%": self.id});
                 self.logger.error(err.stack || err);
                 if (numRetries < MAX_RETRIES) {
-                    self.logger.error('Пытаюсь снова');
+                    self.logger.error('error.retrying');
                     setTimeout(function () {
                         self.setState(newState, callback, numRetries);
                     }, RETRY_INTERVAL / 2);
@@ -253,10 +254,11 @@ Game.prototype.setState = function (newState, callback, numRetries) {
                     self.emit('fatalError');
                 }
             } else {
-                self.emit('notification', 'Статус игры #' + self.id + ' изменен с ' + Object.keys(State)[self.state] +
-                    ' на ' + Object.keys(State)[newState], NotificationType.INFO);
-                self.logger.info('Статус игры #' + self.id + ' изменен с ' + Object.keys(State)[self.state] +
-                    ' на ' + Object.keys(State)[newState]);
+                self.logger.info('game.stateChanged', {
+                    "%id%": self.id,
+                    "%state1%": Object.keys(State)[self.state],
+                    "%state2%": Object.keys(State)[newState]
+                }, NotificationType.INFO);
                 self.state = newState;
                 self.emit('stateChanged');
                 if (callback)
@@ -368,9 +370,11 @@ Game.prototype.roll = function (callback) {
                 self.logger);
             self.emit('newGame', newGame, false);
             self.steamHelper.getSteamUser(winnerID, function (winner) {
-                self.logger.info('Игра #' + self.id + ' завершена, победитель: ' + winner.name);
-                self.emit('notification', 'Игра #' + self.id + ' завершена, победитель: <b><font color="#ffd700"' +
-                    winner.name + '</font></b>', NotificationType.INFO);
+                self.logger.info('game.finished', {
+                        "%id%": self.id,
+                        "%winner%": winner.name
+                    },
+                    NotificationType.INFO);
                 self.emit('roll', winner);
                 self.finishTime = Date.now();
                 var rollTime = Date.now();
@@ -476,9 +480,10 @@ Game.prototype.sortWonItems = function (user, callback) {
                     }
                 }, function () {
                     totalFee = ((totalFee - feeSize) / 100).toFixed(2);
-                    self.logger.info('Размер комиссии: ' + feeItems + ' предметов на сумму ' + totalFee + '$');
-                    self.emit('notification', 'Размер комиссии: <b>' + feeItems + '</b> предметов на сумму <b>' +
-                        totalFee + '$</b>', NotificationType.INFO);
+                    self.logger.info('game.fee', {
+                        "%i%": feeItems,
+                        "%d%": totalFee
+                    }, NotificationType.INFO);
                     callback(itemsToSend);
                 });
             });
@@ -550,7 +555,7 @@ Game.prototype.update = function (callback) {
     var self = this;
     self.db.collection('games').updateOne({id: self.id}, {$set: {bank: self.currentBank}}, {w: 1}, function (err, result) {
         if (err) {
-            self.logger.error('Не удалось обновить информацию об игре');
+            self.logger.error('game.error.update');
             setTimeout(function () {
                 self.update(callback);
             }, RETRY_INTERVAL / 10);
@@ -561,7 +566,7 @@ Game.prototype.update = function (callback) {
                         var start = Date.now();
                         self.db.collection('games').updateOne({id: self.id}, {$set: {startTime: start}}, {w: 1}, function (err1, result) {
                             if (err1) {
-                                self.logger.error('Не удалось обновить информацию об игре');
+                                self.logger.error('game.error.update');
                                 setTimeout(function () {
                                     self.update(callback);
                                 }, RETRY_INTERVAL / 10);

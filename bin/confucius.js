@@ -22,18 +22,14 @@ const ITEM_HANDLING_TIME = 0;
 const RETRY_INTERVAL = 3000;
 const MAX_RETRIES = 5;
 
+const VERSION = '2.39';
+
 const NotificationType = {
     INFO: 'information',
     WARNING: 'warning',
     ERROR: 'error',
     QUESTION: 'question'
 };
-
-const NotificationTitle = {
-    INFO: '<b>Информация</b><br>',
-    WARNING: '<b>Предупреждение</b><br>',
-    ERROR: '<b>Ошибка</b><br>',
-}
 
 const DeclineReasons = {
     NO_TRADE_LINK: 0,
@@ -50,14 +46,14 @@ const DeclineReasons = {
     TOO_LITTLE_TIME: 11
 };
 
-const DeclineReasonsDescriptions = ['У пользователя отсутствует трейд-ссылка', 'Попытка вывести предметы',
-    'Профиль пользователя скрыт', 'Обмен содержит предметы из других игр', 'Предмета нет на торговой площадке',
-    'Слишком мало лотов предмета на торговой площадке', 'Ставка меньше минимальной',
-    'Обмен содержит слишком много предметов', 'Слишком много предметов в одной игре',
-    'Слишком много предметов от одного пользователя', 'Предложение недействительно',
-    'Слишком мало времени до конца игры'];
-
-const UserStatus = {DEFAULT: 0, VIP: 1, PREMIUM: 2, ULTIMATE: 3, MODERATOR: 4, ADMIN: 5};
+const UserStatus = {
+    DEFAULT: 0,
+    VIP: 1,
+    PREMIUM: 2,
+    ULTIMATE: 3,
+    MODERATOR: 4,
+    ADMIN: 5
+};
 
 function Confucius() {
     var self = this;
@@ -70,9 +66,9 @@ function Confucius() {
         }
     };
     process.on('uncaughtException', function (err) {
-        self.logger.error('Непредвиденная ошибка:');
+        self.logger.error('error.unhandled');
         self.logger.error(err.stack || err);
-        self.logger.error('Приложение будет закрыто');
+        self.logger.error('error.exit');
         self.terminate();
     });
     this.config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
@@ -83,6 +79,18 @@ function Confucius() {
     this.marketHelper = null;
     this.currentGame = null;
     this.processedOffers = [];
+    this.localeData = JSON.parse(fs.readFileSync('./lang/' + this.config.language + '.json', 'utf-8'));
+}
+
+Confucius.prototype.localize = function (str, dictionary) {
+    var self = this;
+    var text = self.localeData[str] ? self.localeData[str] : str;
+    if (dictionary) {
+        for (var key in dictionary) {
+            text = text.replace(new RegExp(key, 'g'), dictionary[key].toString());
+        }
+    }
+    return text;
 }
 
 Confucius.prototype.initInfo = function (callback) {
@@ -110,7 +118,7 @@ Confucius.prototype.calcTradeOfferProcessingTime = function (numItems) {
 
 Confucius.prototype.start = function () {
     var self = this;
-    self.logger.info('********** Конфуций v2.31 **********');
+    self.logger.info('startup', {"%s%": VERSION});
     self.connectMongo(function (arg0) {
         self.db = arg0;
         self.initInfo(function () {
@@ -198,7 +206,7 @@ Confucius.prototype.checkEatenItems = function (callback) {
         appID: self.info.appID
     };
     var timeCutoff = null;
-    var checkMissingBets = function() {
+    var checkMissingBets = function () {
         if (timeCutoff && timeCutoff > 0) {
             self.currentGame.getAllItems(function (gameItems) {
                 var allItems = gameItems.reduce(function (result, item) {
@@ -209,7 +217,7 @@ Confucius.prototype.checkEatenItems = function (callback) {
                     if (items.length > 0) {
                         async.forEachOfSeries(items, function (data, index, cbf) {
                             if (!allItems[data.items[0].id]) {
-                                self.steamHelper.getSteamUser(data.owner, function(user) {
+                                self.steamHelper.getSteamUser(data.owner, function (user) {
                                     self.currentGame.addBet(user, data.items, data.totalCost, function () {
                                         cbf();
                                     });
@@ -293,8 +301,8 @@ Confucius.prototype.setUpGameListeners = function (game) {
         self.terminate();
     });
 
-    game.on('notification', function (msg, type) {
-        self.notifyAdmins(msg, type);
+    game.on('notification', function (msg, type, dictionary) {
+        self.notifyAdmins(msg, type, dictionary);
     });
 
     game.on('updated', function () {
@@ -419,7 +427,7 @@ Confucius.prototype.steamLogon = function (callback) {
         });
 
         self.steamHelper.login(function () {
-            self.notifyAdmins(NotificationTitle.INFO + 'Авторизация прошла успешно', NotificationType.INFO);
+            self.notifyAdmins(self.localize('steam.loggedIn'), NotificationType.INFO);
             callback();
         });
     });
@@ -435,9 +443,11 @@ Confucius.prototype.handleTradeOffer = function (offer) {
                     if (token) {
                         if (offer.state === 2 && !offer._isGlitched()) {
                             self.steamHelper.getSteamUser(offer.partner.getSteamID64(), function (user) {
-                                self.notifyAdmins('Получено предложение об обмене #' + offer.id + ' от <font color=orange>'
-                                    + user.name + '</font>', NotificationType.INFO);
-                                self.logger.info('Получено предложение об обмене #' + offer.id + ' от ' + user.name);
+                                self.logger.info('trade.received', {
+                                        "%id%": offer.id,
+                                        "%user%": user.name
+                                    },
+                                    NotificationType.INFO);
                                 if (offer.itemsToGive.length <= 0) {
                                     if (user.privacyState === "public") {
                                         self.processItems(offer, function (items, totalCost, errorCode) {
@@ -453,9 +463,9 @@ Confucius.prototype.handleTradeOffer = function (offer) {
                                                                     + items.length <= self.info.maxItemsPerUser) {
                                                                     self.steamHelper.acceptTradeOffer(offer, function (newItems) {
                                                                         self.processedOffers.splice(self.processedOffers.indexOf(offer.id), 1);
-                                                                        self.notifyAdmins(NotificationTitle.INFO + 'Предложение #'
-                                                                            + offer.id + ' принято', NotificationType.INFO);
-                                                                        self.logger.info('Предложение #' + offer.id + ' принято');
+                                                                        self.logger.info('trade.accepted',
+                                                                            {"%id%": offer.id},
+                                                                            NotificationType.INFO);
                                                                         self.currentGame.addBet(user, newItems, totalCost, function () {
                                                                             self.currentGame.update();
                                                                         });
@@ -527,21 +537,20 @@ Confucius.prototype.declineBet = function (offer, reason) {
     var self = this;
     self.steamHelper.declineTradeOffer(offer, function () {
         self.processedOffers.splice(self.processedOffers.indexOf(offer.id), 1);
-        self.notifyAdmins('<b>Обмен отклонен</b><br>' + DeclineReasonsDescriptions[reason], NotificationType.WARNING);
-        self.logger.info('Обмен № ' + offer.id + ' отклонен: ' + DeclineReasonsDescriptions[reason]);
+        self.logger.info('trade.declined.' + reason, {"%id%": offer.id}, NotificationType.WARNING);
         self.socketHandler.sendToUser(offer.partner.getSteamID64(), 'offerDeclined',
             reason);
     });
 }
 
-Confucius.prototype.notifyAdmins = function (msg, type) {
+Confucius.prototype.notifyAdmins = function (msg, type, dictionary) {
     var self = this;
-    self.socketHandler.sendToAdmins('notification', msg, type);
+    self.socketHandler.sendToAdmins('notification', msg, type, dictionary);
 }
 
 Confucius.prototype.terminate = function () {
     var self = this;
-    self.logger.info('Закрытие соединения и завершение работы');
+    self.logger.info('stopping');
     if (self.db)
         self.db.close();
     if (self.marketHelper)
@@ -564,14 +573,6 @@ Confucius.prototype.createLogger = function () {
     function formatter(args) {
         var date = moment().format('HH:mm:ss');
         var logMessage = '[' + date + ' ' + args.level.toUpperCase() + ']: ' + args.message;
-        if (self.socketHandler)
-            self.socketHandler.sendToAdmins('logMsg', args.message, args.level);
-        return logMessage;
-    }
-
-    function formatterFile(args) {
-        var date = moment().format('HH:mm:ss');
-        var logMessage = '[' + date + ' ' + args.level.toUpperCase() + ']: ' + args.message;
         return logMessage;
     }
 
@@ -580,7 +581,8 @@ Confucius.prototype.createLogger = function () {
     if (fs.existsSync(logDataFile)) {
         var logData = JSON.parse(fs.readFileSync(logDataFile, 'utf-8'));
         if (fs.existsSync(self.config['logDirectory'] + '/latest.log')) {
-            fs.rename(self.config['logDirectory'] + '/latest.log', self.config['logDirectory'] + '/' + logData['lastDate'] + '.log');
+            fs.rename(self.config['logDirectory'] + '/latest.log', self.config['logDirectory']
+                + '/' + logData['lastDate'] + '.log');
         }
         logData['lastDate'] = dateString;
         fs.writeFileSync(logDataFile, JSON.stringify(logData), 'utf-8');
@@ -600,23 +602,50 @@ Confucius.prototype.createLogger = function () {
                 filename: self.config['logDirectory'] + '/latest.log',
                 handleExceptions: true,
                 json: false,
-                formatter: formatterFile
+                formatter: formatter
             })
         ]
     });
-    return logger;
+
+    var localLogFunc = function (print, msg, dictionary, notify) {
+        if (self.socketHandler) {
+            self.socketHandler.sendToAdmins('logMsg', print.name, msg, dictionary);
+            if (notify) {
+                self.notifyAdmins(msg, notify, dictionary);
+            }
+        }
+        var localMsg = self.localize(msg, dictionary);
+        print(localMsg);
+    };
+
+    var localLogger = {
+
+        info: function (msg, dictionary, notify) {
+            localLogFunc(logger.info, msg, dictionary, notify);
+        },
+
+        error: function (msg, dictionary, notify) {
+            localLogFunc(logger.error, msg, dictionary, notify);
+        },
+
+        warning: function (msg, dictionary, notify) {
+            localLogFunc(logger.warning, msg, dictionary, notify);
+        }
+
+    }
+    return localLogger;
 }
 
 Confucius.prototype.connectMongo = function (callback) {
     var self = this;
-    self.logger.info('Установка соединения с базой данных');
+    self.logger.info('connectingDB');
     MongoClient.connect(self.config['mongodb'], function (err, db) {
         if (err) {
-            self.logger.error('Не удалось соединиться с базой данных:');
+            self.logger.error('error.connectDB');
             self.logger.error(err.stack || err);
             self.terminate();
         } else {
-            self.logger.info('Соединение с базой данных установлено');
+            self.logger.info('connectedDB');
             if (callback)
                 callback(db);
         }

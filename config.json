@@ -5,5 +5,6 @@
   "identitySecret": "identitySecret",
   "sentryFile": "./sentry.txt",
   "logDirectory": "./logs/confucius",
-  "mongodb": "mongodb://localhost:27017/jackpot"
+  "mongodb": "mongodb://localhost:27017/jackpot",
+  "language": "en_US"
 }
