@@ -6,6 +6,7 @@ var async = require('async');
 var crypto = require('crypto');
 var events = require('events');
 var util = require('util');
+var SteamCommunity = require('steamcommunity');
 
 util.inherits(Game, events.EventEmitter);
 
@@ -56,7 +57,7 @@ function Game(id, db, marketHelper, steamHelper, info, logger) {
 
 Game.State = State;
 
-Game.setOldGameListener = function(listener) {
+Game.setOldGameListener = function (listener) {
     Game.oldGameListener = listener;
 }
 
@@ -75,7 +76,7 @@ Game.createFromDB = function (data, callback, numRetries) {
             if (items.length > 0) {
                 var gameData = items[0];
                 var game = new Game(data.id, data.db, data.marketHelper, data.steamHelper, data.info, data.logger);
-                if (!data.infoOnly) {
+                var resumeCallback = function () {
                     game.resume({
                         startTime: gameData.startTime,
                         finishTime: gameData.finishTime,
@@ -87,17 +88,16 @@ Game.createFromDB = function (data, callback, numRetries) {
                         state: gameData.state,
                         pauseTimer: data.pauseTimer
                     });
-                } else {
-                    game.winner = gameData.winner;
-                    game.currentBank = gameData.bank;
-                    game.bets = gameData.bets;
-                    game.float = gameData.float;
-                    game.hash = gameData.hash;
-                    game.startTime = gameData.startTime;
-                    game.state = gameData.state;
-                    game.finishTime = gameData.finishTime;
-                }
-                callback(game);
+                };
+                game.winner = gameData.winner;
+                game.currentBank = gameData.bank;
+                game.bets = gameData.bets;
+                game.float = gameData.float;
+                game.hash = gameData.hash;
+                game.startTime = gameData.startTime;
+                game.state = gameData.state;
+                game.finishTime = gameData.finishTime;
+                callback(game, resumeCallback);
             } else {
                 callback(null);
             }
@@ -117,7 +117,6 @@ Game.fixGameErrors = function (db, marketHelper, steamHelper, info, logger, call
                     info: info,
                     logger: logger,
                     pauseTimer: -1,
-                    infoOnly: true
                 }, function (game) {
                     Game.oldGameListener(game);
                     game.setState(State.SENDING, function () {
@@ -149,6 +148,7 @@ Game.fixGameErrors = function (db, marketHelper, steamHelper, info, logger, call
 }
 
 Game.prototype.addBet = function (better, items, totalCost, callback, numRetries) {
+    console.log(totalCost);
     var self = this;
     var itemsArray = [];
     var costFrom = self.currentBank + 1;
@@ -366,6 +366,7 @@ Game.prototype.roll = function (callback) {
             self.winner = winnerID;
             var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper, self.info,
                 self.logger);
+            self.emit('newGame', newGame, false);
             self.steamHelper.getSteamUser(winnerID, function (winner) {
                 self.logger.info('Игра #' + self.id + ' завершена, победитель: ' + winner.name);
                 self.emit('notification', 'Игра #' + self.id + ' завершена, победитель: <b><font color="#ffd700"' +
@@ -385,7 +386,6 @@ Game.prototype.roll = function (callback) {
                                         self.submit(winner, (self.betsByPlayer[winnerID].totalCost /
                                         self.currentBank).toFixed(2), function () {
                                             self.setState(err ? State.ERROR : State.SENT, function () {
-                                                self.emit('newGame', newGame);
                                                 Game.fixGameErrors(self.db, self.marketHelper,
                                                     self.steamHelper, self.info, self.logger);
                                             });
@@ -578,7 +578,7 @@ Game.prototype.update = function (callback) {
                     } else if (self.state === State.PAUSED && Object.keys(self.betsByPlayer).length >= 2) {
                         if (self.gameTimer <= 0)
                             self.gameTimer = self.info.gameDuration;
-                        self.setState(State.ACTIVE, function() {
+                        self.setState(State.ACTIVE, function () {
                             self.startTimer();
                             self.emit('updated');
                             if (callback)

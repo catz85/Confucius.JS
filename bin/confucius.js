@@ -57,7 +57,7 @@ const DeclineReasonsDescriptions = ['У пользователя отсутст�
     'Слишком много предметов от одного пользователя', 'Предложение недействительно',
     'Слишком мало времени до конца игры'];
 
-const UserStatus = {DEFAULT: 0, VIP: 1, PREMIUM: 2, ULTIMATE: 3};
+const UserStatus = {DEFAULT: 0, VIP: 1, PREMIUM: 2, ULTIMATE: 3, MODERATOR: 4, ADMIN: 5};
 
 function Confucius() {
     var self = this;
@@ -117,19 +117,21 @@ Confucius.prototype.start = function () {
             self.socketHandler = new SocketHandler(self.info.port);
             self.socketHandler.setUpListeners();
             self.steamLogon(function () {
-                Game.setOldGameListener(function(game) {
+                Game.setOldGameListener(function (game) {
                     self.setUpGameListeners(game);
                 });
-                self.loadCurrentGame(function () {
+                self.loadCurrentGame(function (resumeCallback) {
                     Game.fixGameErrors(self.db, self.marketHelper, self.steamHelper, {
                         gameDuration: self.info.gameDuration,
                         spinDuration: self.info.spinDuration,
                         appID: self.info.appID
-                    }, self.logger, function() {
+                    }, self.logger, function () {
                         self.setUpSocketListeners();
-                        self.socketHandler.sendToAdmins('gameLoaded');
                         self.setUpGameListeners(self.currentGame);
                         self.checkEatenItems(function () {
+                            if (resumeCallback)
+                                resumeCallback();
+                            self.socketHandler.sendToAdmins('gameLoaded');
                             self.steamHelper.forceCheckTradeOffers(function () {
                                 self.steamHelper.on('autoOffer', function (offer) {
                                     self.handleTradeOffer(offer);
@@ -150,7 +152,7 @@ Confucius.prototype.setUpSocketListeners = function () {
         self.sendStatus(socket);
     });
 
-    self.socketHandler.addAdminEventListener('requestDB', function(socket) {
+    self.socketHandler.addAdminEventListener('requestDB', function (socket) {
 
     });
 
@@ -196,8 +198,40 @@ Confucius.prototype.checkEatenItems = function (callback) {
         appID: self.info.appID
     };
     var timeCutoff = null;
+    var checkMissingBets = function() {
+        if (timeCutoff && timeCutoff > 0) {
+            self.currentGame.getAllItems(function (gameItems) {
+                var allItems = gameItems.reduce(function (result, item) {
+                    result[item.id] = item;
+                    return result;
+                }, {});
+                self.steamHelper.getLastReceivedItems(timeCutoff, function (items, cost) {
+                    if (items.length > 0) {
+                        async.forEachOfSeries(items, function (data, index, cbf) {
+                            if (!allItems[data.items[0].id]) {
+                                self.steamHelper.getSteamUser(data.owner, function(user) {
+                                    self.currentGame.addBet(user, data.items, data.totalCost, function () {
+                                        cbf();
+                                    });
+                                });
+                            } else {
+                                cbf();
+                            }
+                        }, function () {
+                            self.currentGame.update(callback);
+                        });
+                    }
+                    else
+                        callback();
+                });
+            });
+        } else {
+            callback();
+        }
+    };
     if (self.currentGame.startTime >= 0) {
         timeCutoff = self.currentGame.startTime;
+        checkMissingBets();
     } else {
         try {
             Game.createFromDB({
@@ -208,43 +242,18 @@ Confucius.prototype.checkEatenItems = function (callback) {
                 logger: self.logger,
                 pauseTimer: -1,
                 info: gameInfo,
-                infoOnly: true
             }, function (game) {
                 if (game)
                     timeCutoff = game.finishTime;
+                checkMissingBets();
             });
         }
         catch (err) {
             self.logger.error(err.stack || err);
+            callback();
         }
     }
-    if (timeCutoff && timeCutoff > 0) {
-        self.currentGame.getAllItems(function (gameItems) {
-            var allItems = gameItems.reduce(function (result, item) {
-                result[item.id] = item;
-                return result;
-            }, {});
-            self.steamHelper.getLastReceivedItems(timeCutoff, function (offers, cost) {
-                if (offers.length > 0) {
-                    async.forEachOfSeries(offers, function (data, index, cbf) {
-                        if (!allItems[data.items[0].id]) {
-                            self.currentGame.addBet(data.owner, data.items, data.cost, function () {
-                                cbf();
-                            });
-                        } else {
-                            cbf();
-                        }
-                    }, function () {
-                        self.currentGame.update(callback);
-                    });
-                }
-                else
-                    callback();
-            });
-        });
-    } else {
-        callback();
-    }
+
 }
 
 Confucius.prototype.loadCurrentGame = function (callback) {
@@ -262,14 +271,16 @@ Confucius.prototype.loadCurrentGame = function (callback) {
         logger: self.logger,
         pauseTimer: self.info.pauseTimer,
         info: gameInfo
-    }, function (game) {
+    }, function (game, resumeCallback) {
         self.currentGame = game;
         if (!self.currentGame) {
             self.currentGame = new Game(self.info.currentGame, self.db, self.marketHelper, self.steamHelper,
                 gameInfo, self.logger);
-            self.saveGameAsCurrent(self.currentGame, callback);
+            self.saveGameAsCurrent(self.currentGame, function () {
+                callback(resumeCallback);
+            });
         } else {
-            callback();
+            callback(resumeCallback);
         }
     });
 
@@ -287,13 +298,13 @@ Confucius.prototype.setUpGameListeners = function (game) {
     });
 
     game.on('updated', function () {
-        self.socketHandler.adminClients.forEach(function(socket) {
-           self.sendStatus(socket);
+        self.socketHandler.adminClients.forEach(function (socket) {
+            self.sendStatus(socket);
         });
     });
 
-    game.on('stateChanged', function() {
-        self.socketHandler.adminClients.forEach(function(socket) {
+    game.on('stateChanged', function () {
+        self.socketHandler.adminClients.forEach(function (socket) {
             self.sendStatus(socket);
         });
     })
@@ -329,7 +340,7 @@ Confucius.prototype.getUserStatus = function (steamID, callback) {
                 self.getUserStatus(steamID, callback);
             }, RETRY_INTERVAL / 2);
         } else {
-            callback(users[0].status);
+            callback(users[0].status ? users[0].status : UserStatus.DEFAULT);
         }
     });
 }

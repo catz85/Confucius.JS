@@ -360,7 +360,7 @@ SteamHelper.prototype.getLastReceivedItems = function (timeCutoff, callback, num
                             cbf();
                         }, function () {
                             lastItems.push({
-                                owner: offer.partner,
+                                owner: offer.partner.getSteamID64(),
                                 totalCost: cost,
                                 items: items
                             });
