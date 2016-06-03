@@ -341,14 +341,24 @@ Confucius.prototype.setUpGameListeners = function (game) {
         });
     })
 
-    game.on('newGame', function (newGame) {
-        self.saveGameAsCurrent(newGame, function () {
+    game.on('newGame', function (newGame, noRewrite) {
+        if (noRewrite) {
             self.currentGame = newGame;
+        } else {
+            self.saveGameAsCurrent(newGame, function () {
+                self.currentGame = newGame;
+            });
+        }
+
+    });
+
+    game.on('saveGame', function (newGame) {
+        self.saveGameAsCurrent(newGame, function () {
         })
     });
 
-    game.on('rollFinished', function () {
-        self.socketHandler.send('clear');
+    game.on('rollFinished', function (data) {
+        self.socketHandler.send('clear', data);
     });
 
     game.on('timerChanged', function (time) {

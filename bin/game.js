@@ -204,8 +204,8 @@ Game.prototype.addBet = function (better, items, totalCost, callback, numRetries
                     self.currentBank += totalCost;
                     self.numItems += itemsArray.length;
                     self.bets.push(bet);
-                    self.update(function() {
-                       self.emit('newBet', bet);
+                    self.update(function () {
+                        self.emit('newBet', bet);
                         callback();
                     });
                 }
@@ -384,7 +384,7 @@ Game.prototype.roll = function (callback) {
             self.winner = winnerID;
             var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper, self.info,
                 self.logger);
-            self.emit('newGame', newGame, false);
+            self.emit('newGame', newGame, true);
             self.steamHelper.getSteamUser(winnerID, function (winner) {
                 self.logger.info('game.finished', {
                         "%id%": self.id,
@@ -400,12 +400,18 @@ Game.prototype.roll = function (callback) {
                         self.getUserToken(winnerID, function (token) {
                             var timeout = self.info.spinDuration * 1000 - (Date.now() - rollTime);
                             setTimeout(function () {
-                                self.emit('rollFinished');
+                                self.emit('rollFinished', {
+                                    id: newGame.id,
+                                    hash: newGame.hash,
+                                    winnerName: winner.name,
+                                    winnerAvatar: winner.getAvatarURL()
+                                });
                                 self.setState(State.SENDING, function () {
                                     self.sendWonItems(wonItems, winner, token, function (offer, err) {
                                         self.submit(winner, (self.betsByPlayer[winnerID].totalCost /
                                         self.currentBank).toFixed(2), function () {
                                             self.setState(err ? State.ERROR : State.SENT, function () {
+                                                self.emit('saveGame', newGame);
                                                 Game.fixGameErrors(self.db, self.marketHelper,
                                                     self.steamHelper, self.info, self.logger);
                                             });
