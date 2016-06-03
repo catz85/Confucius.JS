@@ -17,7 +17,7 @@ function SocketHandler(port) {
     this.adminListeners = [];
 }
 
-SocketHandler.prototype.hasValue = function(object, value) {
+SocketHandler.prototype.hasValue = function (object, value) {
     for (var key in object) {
         if (object[key] === value)
             return true;
@@ -73,8 +73,8 @@ SocketHandler.prototype.setUpListeners = function () {
                     delete self.clients[socket.handshake.address];
                     if (self.steamIDByClients[socket.handshake.address]) {
                         var steamID = self.steamIDByClients[socket.handshake.address];
-                        delete self.clientsBySteamID[steamID];
-                        delete self.steamIDByClients[socket.handshake.address]
+                        delete self.clientsBySteamID[steamID][self.steamIDByClients[steamID].indexOf(socket)];
+                        delete self.steamIDByClients[socket.handshake.address];
                     }
 
                 }
@@ -84,11 +84,11 @@ SocketHandler.prototype.setUpListeners = function () {
             socket.on('steamAuth', function (steamID) {
                 if (!self.clientsBySteamID[steamID]) {
                     self.clientsBySteamID[steamID] = [socket];
-                    self.steamIDByClients[socket.handshake.address] = [socket];
+
                 } else {
                     self.clientsBySteamID[steamID].push(socket);
-                    self.steamIDByClients[socket.handshake.address].push(steamID);
                 }
+                self.steamIDByClients[socket.handshake.address] = steamID;
             });
         }
 
@@ -122,7 +122,10 @@ SocketHandler.prototype.send = function () {
 SocketHandler.prototype.sendToUser = function () {
     var self = this;
     var args = arguments;
-    self.clientsBySteamID[args[0]].emit(args.slice(1, args.length));
+    var newArgs = args.slice(1, args.length);
+    self.clientsBySteamID[args[0]].forEach(function (socket) {
+        socket.emit(newArgs);
+    });
 }
 
 SocketHandler.prototype.sendToAdmins = function () {
