@@ -139,7 +139,8 @@ Confucius.prototype.start = function () {
                         gameDuration: self.info.gameDuration,
                         spinDuration: self.info.spinDuration,
                         appID: self.info.appID,
-                        domain: self.info.domain
+                        domain: self.info.domain,
+                        jackpot: self.info.jackpot
                     }, self.logger, function () {
                         self.setUpSocketListeners();
                         self.setUpGameListeners(self.currentGame);
@@ -215,7 +216,8 @@ Confucius.prototype.checkEatenItems = function (callback) {
         gameDuration: self.info.gameDuration,
         spinDuration: self.info.spinDuration,
         appID: self.info.appID,
-        domain: self.info.domain
+        domain: self.info.domain,
+        jackpot: self.info.jackpot
     };
     var timeCutoff = null;
     var checkMissingBets = function () {
@@ -282,7 +284,8 @@ Confucius.prototype.loadCurrentGame = function (callback) {
         gameDuration: self.info.gameDuration,
         spinDuration: self.info.spinDuration,
         appID: self.info.appID,
-        domain: self.info.domain
+        domain: self.info.domain,
+        jackpot: self.info.jackpot
     };
     Game.createFromDB({
         id: self.info.currentGame,

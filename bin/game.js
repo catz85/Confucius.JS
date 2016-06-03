@@ -542,7 +542,21 @@ Game.prototype.submit = function (winner, percentage, callback) {
                                 self.submit(winner, percentage, callback);
                             }, RETRY_INTERVAL / 2);
                         } else {
-                            callback();
+                            if (self.currentBank > self.info.jackpot) {
+                                self.db.collection('info').updateOne({name: 'jackpot'},
+                                    {$set: {value: self.currentBank}}, function (err2, result) {
+                                        if (err2) {
+                                            self.logger.error(err2.stack || err1);
+                                            setTimeout(function () {
+                                                self.submit(winner, percentage, callback);
+                                            }, RETRY_INTERVAL / 2);
+                                        } else {
+                                            callback();
+                                        }
+                                    });
+                            } else {
+                                callback();
+                            }
                         }
                     });
                 }
