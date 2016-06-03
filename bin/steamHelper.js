@@ -127,8 +127,8 @@ SteamHelper.prototype.setUpListeners = function () {
                 } else {
                     self.steamCommunity.startConfirmationChecker(30000, self.accountDetails['identitySecret']);
                     self.steamCommunity.on('sessionExpired', function (err) {
-                        self.logger.error('error.steam.expired');
-                        self.logger.error('error.steam.re-login');
+                        self.logger.error('steam.error.expired');
+                        self.logger.error('steam.error.re-login');
                         self.logger.error(err.stack || err);
                         self.loggedIn = false;
                         setTimeout(function () {
