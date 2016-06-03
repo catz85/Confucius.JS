@@ -212,67 +212,71 @@ Confucius.prototype.sendStatus = function (socket) {
 
 Confucius.prototype.checkEatenItems = function (callback) {
     var self = this;
-    var gameInfo = {
-        gameDuration: self.info.gameDuration,
-        spinDuration: self.info.spinDuration,
-        appID: self.info.appID,
-        domain: self.info.domain,
-        jackpot: self.info.jackpot
-    };
-    var timeCutoff = null;
-    var checkMissingBets = function () {
-        if (timeCutoff && timeCutoff > 0) {
-            self.currentGame.getAllItems(function (gameItems) {
-                var allItems = gameItems.reduce(function (result, item) {
-                    result[item.id] = item;
-                    return result;
-                }, {});
-                self.steamHelper.getLastReceivedItems(timeCutoff, function (items, cost) {
-                    if (items.length > 0) {
-                        async.forEachOfSeries(items, function (data, index, cbf) {
-                            if (!allItems[data.items[0].id]) {
-                                self.steamHelper.getSteamUser(data.owner, function (user) {
-                                    self.currentGame.addBet(user, data.items, data.totalCost, function () {
-                                        cbf();
+    if (self.currentGame.id === 1)
+        callback();
+    else {
+        var gameInfo = {
+            gameDuration: self.info.gameDuration,
+            spinDuration: self.info.spinDuration,
+            appID: self.info.appID,
+            domain: self.info.domain,
+            jackpot: self.info.jackpot
+        };
+        var timeCutoff = null;
+        var checkMissingBets = function () {
+            if (timeCutoff && timeCutoff > 0) {
+                self.currentGame.getAllItems(function (gameItems) {
+                    var allItems = gameItems.reduce(function (result, item) {
+                        result[item.id] = item;
+                        return result;
+                    }, {});
+                    self.steamHelper.getLastReceivedItems(timeCutoff, function (items, cost) {
+                        if (items.length > 0) {
+                            async.forEachOfSeries(items, function (data, index, cbf) {
+                                if (!allItems[data.items[0].id]) {
+                                    self.steamHelper.getSteamUser(data.owner, function (user) {
+                                        self.currentGame.addBet(user, data.items, data.totalCost, function () {
+                                            cbf();
+                                        });
                                     });
-                                });
-                            } else {
-                                cbf();
-                            }
-                        }, function () {
-                            self.currentGame.update(callback);
-                        });
-                    }
-                    else
-                        callback();
+                                } else {
+                                    cbf();
+                                }
+                            }, function () {
+                                self.currentGame.update(callback);
+                            });
+                        }
+                        else
+                            callback();
+                    });
                 });
-            });
+            } else {
+                callback();
+            }
+        };
+        if (self.currentGame.startTime >= 0) {
+            timeCutoff = self.currentGame.startTime;
+            checkMissingBets();
         } else {
-            callback();
-        }
-    };
-    if (self.currentGame.startTime >= 0) {
-        timeCutoff = self.currentGame.startTime;
-        checkMissingBets();
-    } else {
-        try {
-            Game.createFromDB({
-                id: self.info.currentGame - 1,
-                db: self.db,
-                marketHelper: self.marketHelper,
-                steamHelper: self.steamHelper,
-                logger: self.logger,
-                pauseTimer: -1,
-                info: gameInfo,
-            }, function (game) {
-                if (game)
-                    timeCutoff = game.finishTime;
-                checkMissingBets();
-            });
-        }
-        catch (err) {
-            self.logger.error(err.stack || err);
-            callback();
+            try {
+                Game.createFromDB({
+                    id: self.info.currentGame - 1,
+                    db: self.db,
+                    marketHelper: self.marketHelper,
+                    steamHelper: self.steamHelper,
+                    logger: self.logger,
+                    pauseTimer: -1,
+                    info: gameInfo,
+                }, function (game) {
+                    if (game)
+                        timeCutoff = game.finishTime;
+                    checkMissingBets();
+                });
+            }
+            catch (err) {
+                self.logger.error(err.stack || err);
+                callback();
+            }
         }
     }
 

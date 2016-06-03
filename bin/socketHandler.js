@@ -12,8 +12,17 @@ function SocketHandler(port) {
     this.clients = {};
     this.adminClients = [];
     this.ipCooldown = {};
-    this.authorizedClients = {};
+    this.clientsBySteamID = {};
+    this.steamIDByClients = {};
     this.adminListeners = [];
+}
+
+SocketHandler.prototype.hasValue = function(object, value) {
+    for (var key in object) {
+        if (object[key] === value)
+            return true;
+    }
+    return false;
 }
 
 SocketHandler.prototype.setUpListeners = function () {
@@ -62,8 +71,10 @@ SocketHandler.prototype.setUpListeners = function () {
                 delete self.clients[socket.handshake.address][self.clients[socket.handshake.address].indexOf(socket)];
                 if (self.clients[socket.handshake.address].length === 0) {
                     delete self.clients[socket.handshake.address];
-                    if (self.authorizedClients[socket.handshake.address]) {
-                        delete self.authorizedClients[socket.handshake.address];
+                    if (self.steamIDByClients[socket.handshake.address]) {
+                        var steamID = self.steamIDByClients[socket.handshake.address];
+                        delete self.clientsBySteamID[steamID];
+                        delete self.steamIDByClients[socket.handshake.address]
                     }
 
                 }
@@ -71,7 +82,13 @@ SocketHandler.prototype.setUpListeners = function () {
             });
 
             socket.on('steamAuth', function (steamID) {
-                self.authorizedClients[socket.handshake.address] = {client: socket, steamID: steamID};
+                if (!self.clientsBySteamID[steamID]) {
+                    self.clientsBySteamID[steamID] = [socket];
+                    self.steamIDByClients[socket.handshake.address] = [socket];
+                } else {
+                    self.clientsBySteamID[steamID].push(socket);
+                    self.steamIDByClients[socket.handshake.address].push(steamID);
+                }
             });
         }
 
@@ -105,14 +122,7 @@ SocketHandler.prototype.send = function () {
 SocketHandler.prototype.sendToUser = function () {
     var self = this;
     var args = arguments;
-    async.forEachOfSeries(self.authorizedClients, function (client, index, callback) {
-        if (client.steamID === args[0]) {
-            client.client.emit(args.slice(1, args.length));
-        } else
-            callback();
-    }, function () {
-        return;
-    });
+    self.clientsBySteamID[args[0]].emit(args.slice(1, args.length));
 }
 
 SocketHandler.prototype.sendToAdmins = function () {
