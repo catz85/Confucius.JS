@@ -204,7 +204,10 @@ Game.prototype.addBet = function (better, items, totalCost, callback, numRetries
                     self.currentBank += totalCost;
                     self.numItems += itemsArray.length;
                     self.bets.push(bet);
-                    callback();
+                    self.update(function() {
+                       self.emit('newBet', bet);
+                        callback();
+                    });
                 }
             });
     });

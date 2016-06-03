@@ -331,6 +331,10 @@ Confucius.prototype.setUpGameListeners = function (game) {
         });
     });
 
+    game.on('newBet', function (bet) {
+        self.socketHandler.send('newBet', {bet: bet, playersInfo: self.currentGame.betsByPlayer});
+    });
+
     game.on('stateChanged', function () {
         self.socketHandler.adminClients.forEach(function (socket) {
             self.sendStatus(socket);
@@ -344,7 +348,7 @@ Confucius.prototype.setUpGameListeners = function (game) {
     });
 
     game.on('rollFinished', function () {
-        self.socketHandler.send('update', self.currentGame.betsByPlayer);
+        self.socketHandler.send('clear');
     });
 
     game.on('timerChanged', function (time) {
@@ -487,7 +491,7 @@ Confucius.prototype.handleTradeOffer = function (offer) {
                                                                         {"%id%": offer.id},
                                                                         NotificationType.INFO);
                                                                     self.currentGame.addBet(user, newItems, totalCost, function () {
-                                                                        self.currentGame.update();
+
                                                                     });
                                                                 });
                                                             } else {
