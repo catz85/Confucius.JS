@@ -21,6 +21,12 @@ function MarketHelper(APIKey, appID, updateInterval, logger) {
             console.log(msg);
         }, info: function (msg) {
             console.log(msg);
+        },
+        warning: function (msg) {
+            console.log(msg);
+        },
+        toLocal: function (msg) {
+            return msg;
         }
     }
 }

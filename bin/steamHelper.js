@@ -29,6 +29,12 @@ function SteamHelper(accountDetails, marketHelper, logger) {
         },
         error: function (msg) {
             console.log(msg);
+        },
+        warning: function (msg) {
+            console.log(msg);
+        },
+        toLocal: function (msg) {
+            return msg;
         }
     };
     this.doingForceCheck = false;

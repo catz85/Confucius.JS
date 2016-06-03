@@ -39,6 +39,7 @@ function Game(id, db, marketHelper, steamHelper, info, logger) {
     this.gameTimer = info.gameDuration;
     this.currentBank = 0;
     this.bets = [];
+    this.numItems = 0;
     this.float = Math.random();
     this.hash = crypto.createHash('md5').update(this.float + '').digest('hex');
     this.timerID = -1;
@@ -51,6 +52,12 @@ function Game(id, db, marketHelper, steamHelper, info, logger) {
             console.log(msg);
         }, info: function (msg) {
             console.log(msg);
+        },
+        warning: function (msg) {
+            console.log(msg);
+        },
+        toLocal: function (msg) {
+            return msg;
         }
     }
 }
@@ -98,6 +105,7 @@ Game.createFromDB = function (data, callback, numRetries) {
                 game.startTime = gameData.startTime;
                 game.state = gameData.state;
                 game.finishTime = gameData.finishTime;
+                game.numItems = gameData.numItems;
                 callback(game, resumeCallback);
             } else {
                 callback(null);
@@ -149,7 +157,6 @@ Game.fixGameErrors = function (db, marketHelper, steamHelper, info, logger, call
 }
 
 Game.prototype.addBet = function (better, items, totalCost, callback, numRetries) {
-    console.log(totalCost);
     var self = this;
     var itemsArray = [];
     var costFrom = self.currentBank + 1;
@@ -165,7 +172,7 @@ Game.prototype.addBet = function (better, items, totalCost, callback, numRetries
         itemsArray.push(newItem);
         cb();
     }, function () {
-        self.currentBank += totalCost;
+
         var bet = {
             steamID: better.steamID.getSteamID64(),
             nickname: better.name,
@@ -175,25 +182,31 @@ Game.prototype.addBet = function (better, items, totalCost, callback, numRetries
             costFrom: costFrom,
             costTo: costTo
         };
-        self.db.collection('games').updateOne({id: self.id}, {$push: {bets: bet}}, {w: 1}, function (err, result) {
-            if (err) {
-                self.logger.error('game.error.bet');
-                self.logger.error(err.stack || err);
-                if (numRetries)
-                    numRetries = 1;
-                else
-                    numRetries++;
-                if (numRetries < MAX_RETRIES)
-                    setTimeout(function () {
-                        self.addBet(better, items, totalCost, callback, numRetries);
-                    }, RETRY_INTERVAL / 3);
-                else
-                    self.emit('fatalError');
-            } else {
-                self.bets.push(bet);
-                callback();
-            }
-        });
+        self.db.collection('games').updateOne({id: self.id}, {
+                $push: {bets: bet},
+                $set: {numItems: self.numItems + itemsArray.length}
+            },
+            {w: 1}, function (err, result) {
+                if (err) {
+                    self.logger.error('game.error.bet');
+                    self.logger.error(err.stack || err);
+                    if (numRetries)
+                        numRetries = 1;
+                    else
+                        numRetries++;
+                    if (numRetries < MAX_RETRIES)
+                        setTimeout(function () {
+                            self.addBet(better, items, totalCost, callback, numRetries);
+                        }, RETRY_INTERVAL / 3);
+                    else
+                        self.emit('fatalError');
+                } else {
+                    self.currentBank += totalCost;
+                    self.numItems += itemsArray.length;
+                    self.bets.push(bet);
+                    callback();
+                }
+            });
     });
 }
 
@@ -311,7 +324,7 @@ Game.prototype.pause = function (callback) {
             }
         });
     } else {
-        callback('Невозможно приостановить неактивную игру');
+        callback('game.error.pause');
     }
 };
 
@@ -336,7 +349,7 @@ Game.prototype.unpause = function (callback) {
             }
         });
     } else {
-        callback('Игра не приостановлена');
+        callback('game.error.unpause');
     }
 }
 
@@ -542,18 +555,27 @@ Game.prototype.sendWonItems = function (items, winner, token, callback) {
     var self = this;
     if (token === null)
         self.getUserToken(winner.steamID.getSteamID64(), function (userToken) {
-            self.steamHelper.sendItems(winner.steamID.getSteamID64(), userToken, items, 'Ваш выигрыш на сайте ' +
-                'DOTA2BETS.RU в игре №' + self.id, callback);
+            self.steamHelper.sendItems(winner.steamID.getSteamID64(), userToken, items, self.logger.toLocal('game.jackpot', {
+                "%id%": self.id,
+                "%site%": self.info.domain
+            }), callback);
         });
     else {
-        self.steamHelper.sendItems(winner.steamID.getSteamID64(), token, items, 'Ваш выигрыш на сайте ' +
-            'DOTA2BETS.RU в игре №' + self.id, callback);
+        self.steamHelper.sendItems(winner.steamID.getSteamID64(), token, items, self.logger.toLocal('game.jackpot', {
+            "%id%": self.id,
+            "%site%": self.info.domain
+        }), callback);
     }
 }
 
 Game.prototype.update = function (callback) {
     var self = this;
-    self.db.collection('games').updateOne({id: self.id}, {$set: {bank: self.currentBank}}, {w: 1}, function (err, result) {
+    self.db.collection('games').updateOne({id: self.id}, {
+        $set: {
+            bank: self.currentBank,
+            numItems: self.numItems
+        }
+    }, {w: 1}, function (err, result) {
         if (err) {
             self.logger.error('game.error.update');
             setTimeout(function () {
@@ -590,25 +612,23 @@ Game.prototype.update = function (callback) {
                                 callback();
                         });
                     } else {
-                        self.getAllItems(function (items) {
-                            if (items.length === self.info.maxItems) {
+                        if (self.numItems === self.info.maxItems) {
+                            self.emit('updated');
+                            self.roll(function () {
                                 self.emit('updated');
-                                self.roll(function () {
-                                    self.emit('updated');
-                                    callback();
-                                });
-                            } else if (self.state === State.PAUSED) {
-                                self.gameTimer = self.info.gameDuration;
-                                self.setState(State.WAITING, function () {
-                                    self.emit('updated');
-                                    callback();
-                                });
-                            } else {
+                                callback();
+                            });
+                        } else if (self.state === State.PAUSED) {
+                            self.gameTimer = self.info.gameDuration;
+                            self.setState(State.WAITING, function () {
                                 self.emit('updated');
-                                if (callback)
-                                    callback();
-                            }
-                        });
+                                callback();
+                            });
+                        } else {
+                            self.emit('updated');
+                            if (callback)
+                                callback();
+                        }
                     }
                 })
             });

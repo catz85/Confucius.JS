@@ -63,6 +63,12 @@ function Confucius() {
         },
         error: function (msg) {
             console.log(msg);
+        },
+        warning: function (msg) {
+            console.log(msg);
+        },
+        toLocal: function (msg) {
+            return msg;
         }
     };
     process.on('uncaughtException', function (err) {
@@ -132,7 +138,8 @@ Confucius.prototype.start = function () {
                     Game.fixGameErrors(self.db, self.marketHelper, self.steamHelper, {
                         gameDuration: self.info.gameDuration,
                         spinDuration: self.info.spinDuration,
-                        appID: self.info.appID
+                        appID: self.info.appID,
+                        domain: self.info.domain
                     }, self.logger, function () {
                         self.setUpSocketListeners();
                         self.setUpGameListeners(self.currentGame);
@@ -165,14 +172,18 @@ Confucius.prototype.setUpSocketListeners = function () {
     });
 
     self.socketHandler.addAdminEventListener('pause', function (socket) {
-        self.currentGame.pause(function (err) {
-            socket.emit('paused', err);
+        self.currentGame.pause(function (errText) {
+            if (errText)
+                self.logger.warning(errText);
+            socket.emit('paused', errText);
         });
     });
 
     self.socketHandler.addAdminEventListener('unpause', function (socket) {
-        self.currentGame.unpause(function (err) {
-            socket.emit('unpaused', self.currentGame.state, err);
+        self.currentGame.unpause(function (errText) {
+            if (errText)
+                self.logger.warning(errText);
+            socket.emit('unpaused', self.currentGame.state, errText);
         });
     });
 
@@ -180,21 +191,21 @@ Confucius.prototype.setUpSocketListeners = function () {
 
 Confucius.prototype.sendStatus = function (socket) {
     var self = this;
-    self.currentGame.getAllItems(function (items) {
-        self.currentGame.selectWinner(function (winner) {
-            if (winner) {
-                self.steamHelper.getSteamUser(winner, function (user) {
-                    socket.emit('statusUpdated', self.currentGame.id, self.currentGame.state,
-                        self.currentGame.currentBank, items.length, Object.keys(self.currentGame.betsByPlayer).length,
-                        self.currentGame.gameTimer, user.name, self.currentGame.float, self.currentGame.hash);
-                });
-            } else {
+    self.currentGame.selectWinner(function (winner) {
+        if (winner) {
+            self.steamHelper.getSteamUser(winner, function (user) {
                 socket.emit('statusUpdated', self.currentGame.id, self.currentGame.state,
-                    self.currentGame.currentBank, items.length, Object.keys(self.currentGame.betsByPlayer).length,
-                    self.currentGame.gameTimer, 'Не определён', self.currentGame.float, self.currentGame.hash);
-            }
+                    self.currentGame.currentBank, self.currentGame.numItems, Object.keys(self.currentGame.betsByPlayer).length,
+                    self.currentGame.state === Game.State.PAUSED ? self.currentGame.pauseTimer
+                        : self.currentGame.gameTimer, user.name, self.currentGame.float, self.currentGame.hash);
+            });
+        } else {
+            socket.emit('statusUpdated', self.currentGame.id, self.currentGame.state,
+                self.currentGame.currentBank, self.currentGame.numItems, Object.keys(self.currentGame.betsByPlayer).length,
+                self.currentGame.state === Game.State.PAUSED ? self.currentGame.pauseTimer
+                    : self.currentGame.gameTimer, 'Не определён', self.currentGame.float, self.currentGame.hash);
+        }
 
-        });
     });
 }
 
@@ -203,7 +214,8 @@ Confucius.prototype.checkEatenItems = function (callback) {
     var gameInfo = {
         gameDuration: self.info.gameDuration,
         spinDuration: self.info.spinDuration,
-        appID: self.info.appID
+        appID: self.info.appID,
+        domain: self.info.domain
     };
     var timeCutoff = null;
     var checkMissingBets = function () {
@@ -269,7 +281,8 @@ Confucius.prototype.loadCurrentGame = function (callback) {
     var gameInfo = {
         gameDuration: self.info.gameDuration,
         spinDuration: self.info.spinDuration,
-        appID: self.info.appID
+        appID: self.info.appID,
+        domain: self.info.domain
     };
     Game.createFromDB({
         id: self.info.currentGame,
@@ -377,7 +390,8 @@ Confucius.prototype.saveGameAsCurrent = function (game, callback, numRetries) {
                     float: game.float,
                     hash: game.hash,
                     state: game.state,
-                    finishTime: -1
+                    finishTime: -1,
+                    numItems: game.numItems
                 }, {w: 1}, function (err, result) {
                     if (err) {
                         if (numRetries)
@@ -410,7 +424,7 @@ Confucius.prototype.steamLogon = function (callback) {
             sentry: self.config.sentryFile,
             sharedSecret: self.config.sharedSecret,
             identitySecret: self.config.identitySecret,
-            domain: 'dota2bets.ru'
+            domain: self.info.domain
         };
         self.steamHelper = new SteamHelper(logOnDetails, self.marketHelper, self.logger);
 
@@ -449,34 +463,32 @@ Confucius.prototype.handleTradeOffer = function (offer) {
                                     },
                                     NotificationType.INFO);
                                 if (offer.itemsToGive.length <= 0) {
-                                    if (user.privacyState === "public") {
+                                    if (user.privacyState === 'public') {
                                         self.processItems(offer, function (items, totalCost, errorCode) {
                                             if (errorCode < 0) {
                                                 if (totalCost >= self.info.minBet * 100) {
                                                     if (items.length <= self.info.maxItemsPerTrade) {
-                                                        self.currentGame.getAllItems(function (allItems) {
-                                                            if (items.length +
-                                                                allItems.length <= self.info.maxItems) {
-                                                                if (!self.currentGame.betsByPlayer
-                                                                    || !self.currentGame.betsByPlayer[user.steamID.getSteamID64()]
-                                                                    || self.currentGame.betsByPlayer[user.steamID.getSteamID64()].count
-                                                                    + items.length <= self.info.maxItemsPerUser) {
-                                                                    self.steamHelper.acceptTradeOffer(offer, function (newItems) {
-                                                                        self.processedOffers.splice(self.processedOffers.indexOf(offer.id), 1);
-                                                                        self.logger.info('trade.accepted',
-                                                                            {"%id%": offer.id},
-                                                                            NotificationType.INFO);
-                                                                        self.currentGame.addBet(user, newItems, totalCost, function () {
-                                                                            self.currentGame.update();
-                                                                        });
+                                                        if (self.currentGame.numItems +
+                                                            items.length <= self.info.maxItems) {
+                                                            if (!self.currentGame.betsByPlayer
+                                                                || !self.currentGame.betsByPlayer[user.steamID.getSteamID64()]
+                                                                || self.currentGame.betsByPlayer[user.steamID.getSteamID64()].count
+                                                                + items.length <= self.info.maxItemsPerUser) {
+                                                                self.steamHelper.acceptTradeOffer(offer, function (newItems) {
+                                                                    self.processedOffers.splice(self.processedOffers.indexOf(offer.id), 1);
+                                                                    self.logger.info('trade.accepted',
+                                                                        {"%id%": offer.id},
+                                                                        NotificationType.INFO);
+                                                                    self.currentGame.addBet(user, newItems, totalCost, function () {
+                                                                        self.currentGame.update();
                                                                     });
-                                                                } else {
-                                                                    self.declineBet(offer, DeclineReasons.TOO_MANY_ITEMS_FROM_USER);
-                                                                }
+                                                                });
                                                             } else {
-                                                                self.declineBet(offer, DeclineReasons.TOO_MANY_ITEMS);
+                                                                self.declineBet(offer, DeclineReasons.TOO_MANY_ITEMS_FROM_USER);
                                                             }
-                                                        });
+                                                        } else {
+                                                            self.declineBet(offer, DeclineReasons.TOO_MANY_ITEMS);
+                                                        }
                                                     } else {
                                                         self.declineBet(offer, DeclineReasons.TOO_MANY_ITEMS_IN_TRADE);
                                                     }
@@ -630,6 +642,10 @@ Confucius.prototype.createLogger = function () {
 
         warning: function (msg, dictionary, notify) {
             localLogFunc(logger.warning, msg, dictionary, notify);
+        },
+
+        toLocal: function (msg, dictionary) {
+            return self.localize(msg, dictionary);
         }
 
     }
