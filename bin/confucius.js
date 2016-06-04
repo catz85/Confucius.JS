@@ -133,7 +133,7 @@ Confucius.prototype.start = function () {
                 if (self.currentGame)
                     socket.emit('updateInfo', {
                         playersData: self.currentGame.betsByPlayer,
-                        bank: self.currentGame,
+                        bank: self.currentGame.currentBank,
                         itemsCount: self.currentGame.numItems
                     });
             });
@@ -347,7 +347,7 @@ Confucius.prototype.setUpGameListeners = function (game) {
         self.socketHandler.send('newBet', bet);
         self.socketHandler.send('updateInfo', {
             playersData: self.currentGame.betsByPlayer,
-            bank: self.currentGame,
+            bank: self.currentGame.currentBank,
             itemsCount: self.currentGame.numItems
         });
     });
