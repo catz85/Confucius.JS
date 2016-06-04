@@ -78,16 +78,14 @@ SocketHandler.prototype.setUpListeners = function () {
                     if (self.clientsBySteamID[steamID].length === 0) {
                         delete self.clientsBySteamID[steamID];
                     }
-                    delete self.clientsBySteamID[steamID][self.steamIDByClients[steamID].indexOf(socket)];
                     delete self.steamIDByClients[socket.handshake.address];
                 }
                 self.io.emit('online', Object.keys(self.clients).length);
             });
 
-            socket.on('steamAuth', function (steamID) {
+            socket.once('steamAuth', function (steamID) {
                 if (!self.clientsBySteamID[steamID]) {
                     self.clientsBySteamID[steamID] = [];
-
                 }
                 self.clientsBySteamID[steamID].push(socket);
                 self.steamIDByClients[socket.handshake.address] = steamID;
