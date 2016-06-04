@@ -557,7 +557,7 @@ Game.prototype.submit = function (winner, percentage, callback) {
 
 Game.prototype.updateUserStats = function (callback) {
     var self = this;
-    self.db.updateMany({steamID: {$in: Object.keys(self.betsByPlayer)}},
+    self.db.collection('users').updateMany({steamID: {$in: Object.keys(self.betsByPlayer)}},
         {$inc: {totalGames: 1}}, {w: 1}, function (err1, result) {
             if (err1) {
                 self.logger.error(err1.stack || err1);
@@ -717,63 +717,63 @@ Game.prototype.update = function (callback) {
 Game.prototype.resume = function (data) {
     var self = this;
     self.state = data.state;
-    if (self.state === State.ERROR) {
-        self.steamHelper.getSteamUser(data.winner, function (user) {
-            self.sortWonItems(user, function (items) {
-                self.setState(State.SENDING, function () {
-                    self.sendWonItems(items, user, null, function (offer, err) {
-                        if (err) {
-                            self.setState(State.ERROR, function () {
-                                var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
-                                    self.info, self.logger);
-                                self.emit('newGame', newGame);
-                            });
-                        } else {
-                            self.setState(State.SENT, function () {
-                                var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
-                                    self.info, self.logger);
-                                self.emit('newGame', newGame);
-                            });
-                        }
-                    });
-                });
-            });
-        });
-
-    } else if (self.state === State.ROLLING || self.state === State.SENDING) {
-        self.steamHelper.getSteamUser(data.winner, function (user) {
-            self.sortWonItems(user, function (items) {
-                self.setState(State.SENDING, function () {
-                    self.sendWonItems(items, user, null, function (offer, err) {
-                        if (err) {
-                            self.setState(State.ERROR, function () {
-                                self.submit(user, (self.betsByPlayer[data.winner].totalCost / self.currentBank).toFixed(2), function () {
+    self.sortBetsByPlayer(function () {
+        if (self.state === State.ERROR) {
+            self.steamHelper.getSteamUser(data.winner, function (user) {
+                self.sortWonItems(user, function (items) {
+                    self.setState(State.SENDING, function () {
+                        self.sendWonItems(items, user, null, function (offer, err) {
+                            if (err) {
+                                self.setState(State.ERROR, function () {
                                     var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
                                         self.info, self.logger);
                                     self.emit('newGame', newGame);
                                 });
-                            });
-                        } else {
-                            self.submit(user, (self.betsByPlayer[data.winner].totalCost / self.currentBank).toFixed(2), function () {
+                            } else {
                                 self.setState(State.SENT, function () {
                                     var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
                                         self.info, self.logger);
                                     self.emit('newGame', newGame);
                                 });
-                            });
-                        }
+                            }
+                        });
                     });
                 });
             });
-        });
-    } else {
-        self.winner = data.winner;
-        self.currentBank = data.bank;
-        self.bets = data.bets;
-        self.float = data.float;
-        self.hash = data.hash;
-        self.startTime = data.startTime;
-        self.sortBetsByPlayer(function () {
+
+        } else if (self.state === State.ROLLING || self.state === State.SENDING) {
+            self.steamHelper.getSteamUser(data.winner, function (user) {
+                self.sortWonItems(user, function (items) {
+                    self.setState(State.SENDING, function () {
+                        self.sendWonItems(items, user, null, function (offer, err) {
+                            if (err) {
+                                self.setState(State.ERROR, function () {
+                                    self.submit(user, (self.betsByPlayer[data.winner].totalCost / self.currentBank).toFixed(2), function () {
+                                        var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
+                                            self.info, self.logger);
+                                        self.emit('newGame', newGame);
+                                    });
+                                });
+                            } else {
+                                self.submit(user, (self.betsByPlayer[data.winner].totalCost / self.currentBank).toFixed(2), function () {
+                                    self.setState(State.SENT, function () {
+                                        var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
+                                            self.info, self.logger);
+                                        self.emit('newGame', newGame);
+                                    });
+                                });
+                            }
+                        });
+                    });
+                });
+            });
+        } else {
+            self.winner = data.winner;
+            self.currentBank = data.bank;
+            self.bets = data.bets;
+            self.float = data.float;
+            self.hash = data.hash;
+            self.startTime = data.startTime;
             if (self.state === State.PAUSED) {
                 self.gameTimer = data.pauseTimer;
             } else if (data.startTime > 0) {
@@ -787,8 +787,8 @@ Game.prototype.resume = function (data) {
                 var start = Date.now();
                 self.update();
             }
-        });
-    }
+        }
+    });
 }
 
 Game.prototype.startTimer = function () {
