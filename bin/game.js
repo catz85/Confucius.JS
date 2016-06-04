@@ -588,7 +588,7 @@ Game.prototype.updateGamesToday = function (callback) {
     var date = new Date();
     date.setHours(0, 0, 0, 0);
     var timeCutoff = date.getTime();
-    self.db.collection('games').find({startTime: {$gt: date}}).toArray(function (err, games) {
+    self.db.collection('games').find({startTime: {$gt: timeCutoff}}).toArray(function (err, games) {
         if (err) {
             self.logger.error(err.stack || err);
             setTimeout(function () {
