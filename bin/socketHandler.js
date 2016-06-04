@@ -68,7 +68,7 @@ SocketHandler.prototype.setUpListeners = function () {
             self.io.emit('online', Object.keys(self.clients).length);
 
             socket.once('disconnect', function () {
-                self.clients[socket.handshake.address].splice(self.clients.indexOf(socket), 1);
+                self.clients[socket.handshake.address].splice(self.clients[socket.handshake.address].indexOf(socket), 1);
                 if (self.clients[socket.handshake.address].length === 0) {
                     delete self.clients[socket.handshake.address];
                     if (self.steamIDByClients[socket.handshake.address]) {
