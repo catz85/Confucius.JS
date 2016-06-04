@@ -404,7 +404,10 @@ Game.prototype.roll = function (callback) {
                                     id: newGame.id,
                                     hash: newGame.hash,
                                     winnerName: winner.name,
-                                    winnerAvatar: winner.getAvatarURL('full')
+                                    winnerAvatar: winner.getAvatarURL('full'),
+                                    bank: self.currentBank,
+                                    chance: (self.betsByPlayer[winnerID].totalCost /
+                                    self.currentBank).toFixed(2)
                                 });
                                 self.setState(State.SENDING, function () {
                                     self.sendWonItems(wonItems, winner, token, function (offer, err) {
@@ -544,6 +547,7 @@ Game.prototype.submit = function (winner, percentage, callback) {
                         self.submit(winner, percentage, callback);
                     }, RETRY_INTERVAL / 2);
                 } else {
+                    self.emit('updateProfile', winner.steamID.getSteamID64());
                     self.updateUserStats(function () {
                         self.updateGlobalStats(function (stats) {
                             callback(stats);

@@ -343,6 +343,20 @@ Confucius.prototype.setUpGameListeners = function (game) {
         });
     });
 
+    game.on('updateProfile', function (steamID) {
+        self.db.collection('users').find({steamID: steamID}).toArray(function (err, users) {
+            if (!err) {
+                self.socketHandler.sendToUser(steamID, 'updateProfile', {
+                    won: users[0].won,
+                    maxWin: users[0].maxWin,
+                    totalIncome: users[0].totalIncome,
+                });
+            } else {
+                self.logger.error(err);
+            }
+        });
+    });
+
     game.on('newBet', function (bet) {
         self.socketHandler.send('newBet', bet);
         self.socketHandler.send('updateInfo', {
