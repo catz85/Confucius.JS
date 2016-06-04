@@ -391,8 +391,7 @@ Game.prototype.roll = function (callback) {
                         "%winner%": winner.name
                     },
                     NotificationType.INFO);
-                self.emit('roll', winner);
-                self.finishTime = Date.now();
+              //  self.emit('roll', winner);
                 var rollTime = Date.now();
                 self.finishTime = Date.now();
                 self.saveFinishTime(self.finishTime, function () {
