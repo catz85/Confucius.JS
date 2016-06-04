@@ -29,6 +29,14 @@ SocketHandler.prototype.setUpListeners = function () {
     var self = this;
 
     self.io.on('connection', function (socket) {
+        socket.once('steamAuth', function (steamID) {
+            if (!self.clientsBySteamID[steamID]) {
+                self.clientsBySteamID[steamID] = [];
+            }
+            self.clientsBySteamID[steamID].push(socket);
+            self.steamIDByClients[socket.handshake.address] = steamID;
+        });
+        socket.emit('requestSteamID');
         if (socket.handshake.query.authToken === AUTH_KEY) {
 
             socket.emit('authSuccess');
@@ -82,14 +90,6 @@ SocketHandler.prototype.setUpListeners = function () {
                 }
                 self.io.emit('online', Object.keys(self.clients).length);
             });
-
-            socket.once('steamAuth', function (steamID) {
-                if (!self.clientsBySteamID[steamID]) {
-                    self.clientsBySteamID[steamID] = [];
-                }
-                self.clientsBySteamID[steamID].push(socket);
-                self.steamIDByClients[socket.handshake.address] = steamID;
-            });
         }
 
     });
@@ -123,6 +123,7 @@ SocketHandler.prototype.send = function () {
 SocketHandler.prototype.sendToUser = function () {
     var self = this;
     var args = Array.prototype.slice.call(arguments);
+    console.log(args);
     var newArgs = args.slice(1, args.length);
     self.clientsBySteamID[args[0]].forEach(function (socket) {
         socket.emit(newArgs);
