@@ -391,7 +391,7 @@ Game.prototype.roll = function (callback) {
                         "%winner%": winner.name
                     },
                     NotificationType.INFO);
-              //  self.emit('roll', winner);
+                //  self.emit('roll', winner);
                 var rollTime = Date.now();
                 self.finishTime = Date.now();
                 self.saveFinishTime(self.finishTime, function () {
@@ -408,16 +408,17 @@ Game.prototype.roll = function (callback) {
                                     chance: (self.betsByPlayer[winnerID].totalCost /
                                     self.currentBank).toFixed(2)
                                 });
-                                self.setState(State.SENDING, function () {
-                                    self.sendWonItems(wonItems, winner, token, function (offer, err) {
-                                        self.submit(winner, (self.betsByPlayer[winnerID].totalCost /
-                                        self.currentBank).toFixed(2), function () {
+                                self.submit(winner, (self.betsByPlayer[winnerID].totalCost /
+                                self.currentBank).toFixed(2), function () {
+                                    self.setState(State.SENDING, function () {
+                                        self.sendWonItems(wonItems, winner, token, function (offer, err) {
+
                                             self.setState(err ? State.ERROR : State.SENT, function () {
                                                 self.emit('saveGame', newGame);
                                                 Game.fixGameErrors(self.db, self.marketHelper,
                                                     self.steamHelper, self.info, self.logger);
                                             });
-                                        })
+                                        });
                                     });
                                 });
                             }, timeout > 0 ? timeout : 0);
