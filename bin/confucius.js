@@ -247,7 +247,7 @@ Confucius.prototype.checkEatenItems = function (callback) {
                                     cbf();
                                 }
                             }, function () {
-                                self.currentGame.update(callback);
+                                callback();
                             });
                         }
                         else

@@ -342,7 +342,7 @@ SteamHelper.prototype.getLastReceivedItems = function (timeCutoff, callback, num
         var lastItems = [];
         var totalCost = 0;
         async.forEachOfSeries(receivedOffers, function (offer, key, cb) {
-            if (offer.state === 3 && offer.updated.getTime() > timeCutoff) {
+            if (offer.state === 3 && offer.updated.getTime() >= timeCutoff) {
                 offer.getReceivedItems(false, function (err, newItems) {
                     if (err) {
                         self.logger.error('steam.error.loadItems');
@@ -365,7 +365,6 @@ SteamHelper.prototype.getLastReceivedItems = function (timeCutoff, callback, num
                         var cost = 0;
                         async.forEachOfSeries(newItems, function (item, key, cbf) {
                             item.cost = self.marketHelper.getItemData(item.market_hash_name).value;
-                            items.push(item);
                             totalCost += item.cost;
                             cost += item.cost;
                             items.push(item);
