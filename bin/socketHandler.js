@@ -96,6 +96,7 @@ SocketHandler.prototype.setUpListeners = function () {
 }
 
 SocketHandler.prototype.addEventListener = function (event, listener) {
+    var self = this;
     self.io.on(event, listener);
 }
 
