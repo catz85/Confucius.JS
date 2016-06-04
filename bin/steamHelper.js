@@ -300,8 +300,6 @@ SteamHelper.prototype.acceptTradeOffer = function (offer, callback, numRetries) 
 
 SteamHelper.prototype.declineTradeOffer = function (offer, callback, numRetries) {
     var self = this;
-    if (offer.state !== 2)
-        callback();
     if (!callback)
         callback = function (arg0) {
         };
