@@ -71,23 +71,25 @@ SocketHandler.prototype.setUpListeners = function () {
                 self.clients[socket.handshake.address].splice(self.clients[socket.handshake.address].indexOf(socket), 1);
                 if (self.clients[socket.handshake.address].length === 0) {
                     delete self.clients[socket.handshake.address];
-                    if (self.steamIDByClients[socket.handshake.address]) {
-                        var steamID = self.steamIDByClients[socket.handshake.address];
-                        delete self.clientsBySteamID[steamID][self.steamIDByClients[steamID].indexOf(socket)];
-                        delete self.steamIDByClients[socket.handshake.address];
+                }
+                if (self.steamIDByClients[socket.handshake.address]) {
+                    var steamID = self.steamIDByClients[socket.handshake.address];
+                    self.clientsBySteamID[steamID].splice(self.clientsBySteamID[steamID].indexOf(socket), 1);
+                    if (self.clientsBySteamID[steamID].length === 0) {
+                        delete self.clientsBySteamID[steamID];
                     }
-
+                    delete self.clientsBySteamID[steamID][self.steamIDByClients[steamID].indexOf(socket)];
+                    delete self.steamIDByClients[socket.handshake.address];
                 }
                 self.io.emit('online', Object.keys(self.clients).length);
             });
 
             socket.on('steamAuth', function (steamID) {
                 if (!self.clientsBySteamID[steamID]) {
-                    self.clientsBySteamID[steamID] = [socket];
+                    self.clientsBySteamID[steamID] = [];
 
-                } else {
-                    self.clientsBySteamID[steamID].push(socket);
                 }
+                self.clientsBySteamID[steamID].push(socket);
                 self.steamIDByClients[socket.handshake.address] = steamID;
             });
         }
