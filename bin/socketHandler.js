@@ -122,7 +122,7 @@ SocketHandler.prototype.send = function () {
 
 SocketHandler.prototype.sendToUser = function () {
     var self = this;
-    var args = arguments;
+    var args = Array.prototype.slice.call(arguments);
     var newArgs = args.slice(1, args.length);
     self.clientsBySteamID[args[0]].forEach(function (socket) {
         socket.emit(newArgs);
