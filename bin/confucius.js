@@ -129,6 +129,10 @@ Confucius.prototype.start = function () {
         self.db = arg0;
         self.initInfo(function () {
             self.socketHandler = new SocketHandler(self.info.port);
+            self.socketHandler.addEventListener('connection', function (socket) {
+                if (self.currentGame)
+                    socket.emit('updateInfo', self.currentGame.betsByPlayer);
+            });
             self.socketHandler.setUpListeners();
             self.steamLogon(function () {
                 Game.setOldGameListener(function (game) {
@@ -323,6 +327,10 @@ Confucius.prototype.setUpGameListeners = function (game) {
 
     game.on('notification', function (msg, type, dictionary) {
         self.notifyAdmins(msg, type, dictionary);
+    });
+
+    game.on('updateStats', function (stats) {
+        self.socketHandler.send('updateStats', stats);
     });
 
     game.on('updated', function () {

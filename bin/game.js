@@ -166,8 +166,8 @@ Game.prototype.addBet = function (better, items, totalCost, callback, numRetries
             id: item.id,
             name: item.name,
             market_hash_name: item.market_hash_name,
-            cost: (item.cost / 100).toFixed(2),
-            image: item.getImageURL(),
+            cost: item.cost,
+            image: item.getImageURL('full'),
         };
         itemsArray.push(newItem);
         cb();
@@ -177,7 +177,7 @@ Game.prototype.addBet = function (better, items, totalCost, callback, numRetries
             steamID: better.steamID.getSteamID64(),
             nickname: better.name,
             deposit: totalCost,
-            avatar: better.getAvatarURL(),
+            avatar: better.getAvatarURL('full'),
             items: itemsArray,
             costFrom: costFrom,
             costTo: costTo
@@ -404,7 +404,7 @@ Game.prototype.roll = function (callback) {
                                     id: newGame.id,
                                     hash: newGame.hash,
                                     winnerName: winner.name,
-                                    winnerAvatar: winner.getAvatarURL()
+                                    winnerAvatar: winner.getAvatarURL('full')
                                 });
                                 self.setState(State.SENDING, function () {
                                     self.sendWonItems(wonItems, winner, token, function (offer, err) {
@@ -490,8 +490,8 @@ Game.prototype.sortWonItems = function (user, callback) {
                     });
                     if (inventoryItem && inventoryItem[0]) {
                         inventoryItem = inventoryItem[0];
-                        if (item.cost * 100 <= feeSize && item.owner !== user.steamID.getSteamID64()) {
-                            feeSize -= item.cost * 100;
+                        if (item.cost <= feeSize && item.owner !== user.steamID.getSteamID64()) {
+                            feeSize -= item.cost;
                             feeItems++;
                         } else {
                             itemsToSend.push(inventoryItem);
@@ -520,7 +520,7 @@ Game.prototype.submit = function (winner, percentage, callback) {
             winner: winner.steamID.getSteamID64(),
             winnerName: winner.name,
             percentage: percentage,
-            winnerAvatar: winner.getAvatarURL()
+            winnerAvatar: winner.getAvatarURL('full')
         }
     }, {w: 1}, function (err, res) {
         if (err) {
@@ -529,49 +529,104 @@ Game.prototype.submit = function (winner, percentage, callback) {
                 self.submit(winner, percentage, callback);
             }, RETRY_INTERVAL / 2);
         } else {
-            self.db.collection('users').find({steamID: winner.steamID.getSteamID64()}).toArray(function (err, users) {
-                if (err) {
-                    self.logger.error(err.stack || err);
+            self.db.collection('users').updateOne({steamID: winner.steamID.getSteamID64()}, {
+                $inc: {
+                    won: 1,
+                    totalIncome: self.currentBank
+                },
+                $max: {
+                    maxWin: self.currentBank
+                }
+            }, function (err1, result) {
+                if (err1) {
+                    self.logger.error(err1.stack || err1);
                     setTimeout(function () {
                         self.submit(winner, percentage, callback);
                     }, RETRY_INTERVAL / 2);
                 } else {
-                    self.db.collection('users').updateOne({steamID: winner.steamID.getSteamID64()}, {
-                        $set: {
-                            won: users[0].won ? users[0].won + 1 : 1,
-                            totalIncome: users[0].totalIncome ? users[0].totalIncome
-                            + self.currentBank : self.currentBank,
-                            maxWin: users[0].maxWin ? (users[0].maxWin < self.currentBank
-                                ? self.currentBank : users[0].maxWin) : self.currentBank
-                        }
-                    }, {w: 1}, function (err1, r) {
-                        if (err1) {
-                            self.logger.error(err1.stack || err1);
-                            setTimeout(function () {
-                                self.submit(winner, percentage, callback);
-                            }, RETRY_INTERVAL / 2);
-                        } else {
-                            if (self.currentBank > self.info.jackpot) {
-                                self.db.collection('info').updateOne({name: 'jackpot'},
-                                    {$set: {value: self.currentBank}}, function (err2, result) {
-                                        if (err2) {
-                                            self.logger.error(err2.stack || err1);
-                                            setTimeout(function () {
-                                                self.submit(winner, percentage, callback);
-                                            }, RETRY_INTERVAL / 2);
-                                        } else {
-                                            callback();
-                                        }
-                                    });
-                            } else {
-                                callback();
-                            }
-                        }
+                    self.updateUserStats(function () {
+                        self.updateGlobalStats(function (stats) {
+                            callback(stats);
+                        })
                     });
                 }
             });
         }
     });
+}
+
+Game.prototype.updateUserStats = function (callback) {
+    var self = this;
+    self.db.updateMany({steamID: {$in: Object.keys(self.betsByPlayer)}},
+        {$inc: {totalGames: 1}}, {w: 1}, function (err1, result) {
+            if (err1) {
+                self.logger.error(err1.stack || err1);
+                setTimeout(function () {
+                    self.updateUserStats(callback);
+                }, RETRY_INTERVAL / 2);
+            } else {
+                callback();
+            }
+        });
+}
+
+Game.prototype.updateGlobalStats = function (callback) {
+    var self = this;
+    self.updateJackpot(function (jackpot) {
+        self.updateGamesToday(function (games) {
+            self.updateItemsToday(games, function (itemsCount) {
+                var result = {jackpot: jackpot, gamesToday: games.length, itemsToday: itemsCount};
+                self.emit('updateStats', result);
+                callback(result);
+            });
+        });
+    });
+};
+
+Game.prototype.updateGamesToday = function (callback) {
+    var self = this;
+    var date = new Date();
+    date.setHours(0, 0, 0, 0);
+    var timeCutoff = date.getTime();
+    self.db.collection('games').find({startTime: {$gt: date}}).toArray(function (err, games) {
+        if (err) {
+            self.logger.error(err.stack || err);
+            setTimeout(function () {
+                self.updateGamesToday(callback);
+            }, RETRY_INTERVAL / 2);
+        } else {
+            callback(games);
+        }
+    });
+}
+
+Game.prototype.updateItemsToday = function (games, callback) {
+    var itemsCount = 0;
+    async.forEachOfSeries(games, function (game, index, cb) {
+        itemsCount += game.numItems;
+        cb();
+    }, function () {
+        callback(itemsCount);
+    });
+}
+
+Game.prototype.updateJackpot = function (callback) {
+    var self = this;
+    if (self.currentBank > self.info.jackpot) {
+        self.db.collection('info').updateOne({name: 'jackpot'},
+            {$set: {value: self.currentBank}}, function (err, result) {
+                if (err) {
+                    self.logger.error(err.stack || err);
+                    setTimeout(function () {
+                        self.updateJackpot(callback);
+                    }, RETRY_INTERVAL / 2);
+                } else {
+                    callback(self.currentBank);
+                }
+            });
+    } else {
+        callback(self.info.jackpot);
+    }
 }
 
 Game.prototype.sendWonItems = function (items, winner, token, callback) {
