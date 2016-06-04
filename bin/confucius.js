@@ -362,7 +362,7 @@ Confucius.prototype.setUpGameListeners = function (game) {
     game.on('newBet', function (bet) {
         self.socketHandler.send('newBet', bet);
         self.socketHandler.send('updateInfo', self.currentGame.betsByPlayer);
-        self.socket.emit('updateGame', {
+        self.socketHandler.send('updateGame', {
             bank: self.currentGame.currentBank,
             itemsCount: self.currentGame.numItems
         });
