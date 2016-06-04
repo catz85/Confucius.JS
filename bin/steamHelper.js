@@ -189,7 +189,7 @@ SteamHelper.prototype.getTradeOffers = function (filter, callback, numRetries) {
                 numRetries++;
             self.logger.error('steam.error.loadOffers');
             self.logger.error(err.stack || err);
-            if (depth < MAX_RETRIES) {
+            if (numRetries < MAX_RETRIES) {
                 self.logger.error('error.retrying');
                 setTimeout(function () {
                     self.getActiveSentTrades(callback, numRetries);
@@ -254,8 +254,6 @@ SteamHelper.prototype.getActiveSentTrades = function (callback) {
 
 SteamHelper.prototype.acceptTradeOffer = function (offer, callback, numRetries) {
     var self = this;
-    if (offer.state === 3)
-        callback();
     if (!callback)
         callback = function (arg0) {
             return;
