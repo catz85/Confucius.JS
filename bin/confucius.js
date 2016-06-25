@@ -132,10 +132,6 @@ Confucius.prototype.start = function () {
             self.socketHandler.addEventListener('connection', function (socket) {
                 if (self.currentGame) {
                     socket.emit('updateInfo', self.currentGame.betsByPlayer);
-                    socket.emit('updateGame', {
-                        bank: self.currentGame.currentBank,
-                        itemsCount: self.currentGame.numItems
-                    });
                 }
 
             });
@@ -360,12 +356,12 @@ Confucius.prototype.setUpGameListeners = function (game) {
     });
 
     game.on('newBet', function (bet) {
-        self.socketHandler.send('newBet', bet);
         self.socketHandler.send('updateInfo', self.currentGame.betsByPlayer);
-        self.socketHandler.send('updateGame', {
-            bank: self.currentGame.currentBank,
-            itemsCount: self.currentGame.numItems
-        });
+        self.socketHandler.send('updateGame',
+            self.currentGame.currentBank,
+            self.currentGame.numItems,
+            self.currentGame.betsByPlayer,
+            bet);
     });
 
     game.on('stateChanged', function () {

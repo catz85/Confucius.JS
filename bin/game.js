@@ -216,7 +216,7 @@ Game.prototype.addBet = function (better, items, totalCost, callback, numRetries
 Game.prototype.sortBetsByPlayer = function (callback) {
     var self = this;
     var sortedItems = {};
-    self.getAllItems(function (gameItems) {
+    self.getAllItems(function (gameItems, numBetsByPlayer) {
         async.forEachOfSeries(gameItems, function (item, index, cb) {
             if (sortedItems[item.owner]) {
                 var data = self.marketHelper.getItemData(item.market_hash_name);
@@ -227,6 +227,7 @@ Game.prototype.sortBetsByPlayer = function (callback) {
                 var data = self.marketHelper.getItemData(item.market_hash_name);
                 sortedItems[item.owner].totalCost += data.value;
                 sortedItems[item.owner].count++;
+                sortedItems[item.owner].numBets = numBetsByPlayer[item.owner];
             }
             cb();
         }, function () {
@@ -434,8 +435,14 @@ Game.prototype.roll = function (callback) {
 Game.prototype.getAllItems = function (callback) {
     var self = this;
     var items = [];
+    var numBetsByPlayer = {};
     async.forEachOfSeries(self.bets, function (bet, key, cbf) {
         var owner = bet.steamID;
+        if (numBetsByPlayer[owner]) {
+            numBetsByPlayer[owner]++;
+        } else {
+            numBetsByPlayer[owner] = 1;
+        }
         async.forEachOfSeries(bet.items, function (item, key0, cb) {
             item.owner = owner;
             items.push(item);
@@ -444,7 +451,7 @@ Game.prototype.getAllItems = function (callback) {
             cbf();
         });
     }, function () {
-        callback(items);
+        callback(items, numBetsByPlayer);
     });
 }
 
