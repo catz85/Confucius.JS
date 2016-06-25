@@ -243,7 +243,7 @@ Game.prototype.sortBetsByPlayer = function (callback) {
 Game.prototype.recalculateChance = function (callback) {
     var self = this;
     async.forEachOfSeries(self.betsByPlayer, function (data, key, cb) {
-        self.betsByPlayer[key].chance = (Number(data.totalCost) * 100.0 / self.currentBank).toFixed(2);
+        self.betsByPlayer[key].chance = Number((Number(data.totalCost) * 100.0 / self.currentBank).toFixed(2));
         cb();
     }, function () {
         if (callback)
