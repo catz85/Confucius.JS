@@ -747,8 +747,8 @@ Game.prototype.resume = function (data) {
 
         } else if (self.state === State.ROLLING || self.state === State.SENDING) {
             self.winner = data.winner;
-            self.selectWinner(function(winner) {
-                self.steamHelper.getSteamUser(data.winner, function (user) {
+            self.selectWinner(function(winnerID) {
+                self.steamHelper.getSteamUser(winnerID, function (user) {
                     self.sortWonItems(user, function (items) {
                         self.setState(State.SENDING, function () {
                             self.sendWonItems(items, user, null, function (offer, err) {
