@@ -125,9 +125,11 @@ SocketHandler.prototype.sendToUser = function () {
     var args = Array.prototype.slice.call(arguments);
     console.log(args);
     var newArgs = args.slice(1, args.length);
-    self.clientsBySteamID[args[0]].forEach(function (socket) {
-        socket.emit(newArgs);
-    });
+    if (self.clientsBySteamID[args[0]]) {
+        self.clientsBySteamID[args[0]].forEach(function (socket) {
+            socket.emit(newArgs);
+        });
+    }
 }
 
 SocketHandler.prototype.sendToAdmins = function () {
