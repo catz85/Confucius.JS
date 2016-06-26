@@ -473,6 +473,8 @@ Game.prototype.getUserToken = function (steamID, callback, numRetries) {
         } else {
             if (!users) {
                 callback(null);
+            } else if (!users[0]) {
+                callback(null);
             } else if (!users[0].token) {
                 callback(null);
             } else {
@@ -754,7 +756,7 @@ Game.prototype.resume = function (data) {
 
         } else if (self.state === State.ROLLING || self.state === State.SENDING) {
             self.winner = data.winner;
-            self.selectWinner(function(winnerID) {
+            self.selectWinner(function (winnerID) {
                 self.winner = winnerID;
                 self.steamHelper.getSteamUser(winnerID, function (user) {
                     self.sortWonItems(user, function (items) {
