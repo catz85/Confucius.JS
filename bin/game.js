@@ -400,7 +400,7 @@ Game.prototype.roll = function (callback) {
                     winnerTicket: Number((self.currentBank * self.float).toFixed(0)),
                     winnerNumber: self.float,
                     winnerAvatar: winner.getAvatarURL('medium')
-                });
+                }, self);
                 var rollTime = Date.now();
                 self.finishTime = Date.now();
                 self.saveFinishTime(self.finishTime, function () {
@@ -416,11 +416,9 @@ Game.prototype.roll = function (callback) {
                                     bank: self.currentBank,
                                     chance: Number(self.betsByPlayer[winnerID].chance)
                                 });
-                                self.submit(winner, Number(self.betsByPlayer[winnerID].totalCost /
-                                    self.currentBank), function () {
+                                self.submit(winner, Number(self.betsByPlayer[winnerID].chance), function () {
                                     self.setState(State.SENDING, function () {
                                         self.sendWonItems(wonItems, winner, token, function (offer, err) {
-
                                             self.setState(err ? State.ERROR : State.SENT, function () {
                                                 self.emit('saveGame', newGame);
                                                 Game.fixGameErrors(self.db, self.marketHelper,
@@ -771,14 +769,14 @@ Game.prototype.resume = function (data) {
                             self.sendWonItems(items, user, null, function (offer, err) {
                                 if (err) {
                                     self.setState(State.ERROR, function () {
-                                        self.submit(user, (self.betsByPlayer[winnerID].totalCost / self.currentBank).toFixed(2), function () {
+                                        self.submit(user, Number((self.betsByPlayer[winnerID].totalCost / self.currentBank).toFixed(2)), function () {
                                             var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
                                                 self.info, self.logger);
                                             self.emit('newGame', newGame);
                                         });
                                     });
                                 } else {
-                                    self.submit(user, (self.betsByPlayer[winnerID].totalCost / self.currentBank).toFixed(2), function () {
+                                    self.submit(user, Number((self.betsByPlayer[winnerID].totalCost / self.currentBank).toFixed(2)), function () {
                                         self.setState(State.SENT, function () {
                                             var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
                                                 self.info, self.logger);
