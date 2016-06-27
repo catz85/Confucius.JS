@@ -469,8 +469,10 @@ Confucius.prototype.saveGameAsCurrent = function (game, callback, numRetries) {
 
 Confucius.prototype.getPlayersRollData = function (callback) {
     var self = this;
+    console.log(1111);
     self.db.collection('users').find({steamID: {$in: Object.keys(self.currentGame.betsByPlayer)}})
         .toArray(function (error, result) {
+            console.log(result);
             if (error) {
                 self.logger.error(error.stack || error);
                 setTimeout(function () {
@@ -479,6 +481,7 @@ Confucius.prototype.getPlayersRollData = function (callback) {
             } else {
                 var rollData = {};
                 async.forEachOfSeries(result, function (user, key, cb) {
+                    console.log(user);
                     rollData[user.steamID] = {
                         avatar: user.avatar,
                         chance: Number(self.currentGame.betsByPlayer[user.steamID].chance)
