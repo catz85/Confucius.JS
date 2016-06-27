@@ -761,7 +761,8 @@ Game.prototype.resume = function (data) {
 
         } else if (self.state === State.ROLLING || self.state === State.SENDING) {
             self.winner = data.winner;
-            self.selectWinner(function (winnerID) {
+            self.roll();
+         /*   self.selectWinner(function (winnerID) {
                 self.winner = winnerID;
                 self.steamHelper.getSteamUser(winnerID, function (user) {
                     self.sortWonItems(user, function (items) {
@@ -769,14 +770,14 @@ Game.prototype.resume = function (data) {
                             self.sendWonItems(items, user, null, function (offer, err) {
                                 if (err) {
                                     self.setState(State.ERROR, function () {
-                                        self.submit(user, Number((self.betsByPlayer[winnerID].totalCost / self.currentBank).toFixed(2)), function () {
+                                        self.submit(user, self.betsByPlayer[winnerID].chance, function () {
                                             var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
                                                 self.info, self.logger);
                                             self.emit('newGame', newGame);
                                         });
                                     });
                                 } else {
-                                    self.submit(user, Number((self.betsByPlayer[winnerID].totalCost / self.currentBank).toFixed(2)), function () {
+                                    self.submit(user, self.betsByPlayer[winnerID].chance, function () {
                                         self.setState(State.SENT, function () {
                                             var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
                                                 self.info, self.logger);
@@ -788,7 +789,7 @@ Game.prototype.resume = function (data) {
                         });
                     });
                 });
-            });
+            });*/
         } else {
             self.winner = data.winner;
             self.currentBank = data.bank;
