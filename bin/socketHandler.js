@@ -108,7 +108,7 @@ SocketHandler.prototype.addAdminEventListener = function (event, listener) {
 
 SocketHandler.prototype.send = function () {
     var self = this;
-    self.io.emit.apply(self.io, arguments);
+    self.io.emit.apply(self.io, Array.prototype.slice.call(arguments));
 };
 
 SocketHandler.prototype.sendToUser = function () {
