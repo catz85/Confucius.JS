@@ -384,8 +384,8 @@ Confucius.prototype.setUpGameListeners = function (game) {
         })
     });
 
-    game.on('rollStarted', function (data) {
-        self.getPlayersRollData(function (avatars) {
+    game.on('rollStarted', function (data, game) {
+        self.getPlayersRollData(game, function (avatars) {
             self.socketHandler.send('rollStart', avatars, data);
         });
     });
@@ -467,12 +467,10 @@ Confucius.prototype.saveGameAsCurrent = function (game, callback, numRetries) {
 
 };
 
-Confucius.prototype.getPlayersRollData = function (callback) {
+Confucius.prototype.getPlayersRollData = function (game, callback) {
     var self = this;
-    console.log(1111);
-    self.db.collection('users').find({steamID: {$in: Object.keys(self.currentGame.betsByPlayer)}})
+    self.db.collection('users').find({steamID: {$in: Object.keys(game.betsByPlayer)}})
         .toArray(function (error, result) {
-            console.log(result);
             if (error) {
                 self.logger.error(error.stack || error);
                 setTimeout(function () {
@@ -484,7 +482,7 @@ Confucius.prototype.getPlayersRollData = function (callback) {
                     console.log(user);
                     rollData[user.steamID] = {
                         avatar: user.avatar,
-                        chance: Number(self.currentGame.betsByPlayer[user.steamID].chance)
+                        chance: Number(game.betsByPlayer[user.steamID].chance)
                     };
                     cb();
                 }, function () {
