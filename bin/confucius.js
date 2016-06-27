@@ -374,6 +374,7 @@ Confucius.prototype.setUpGameListeners = function (game) {
         } else {
             self.saveGameAsCurrent(newGame, function () {
                 self.currentGame = newGame;
+                self.setUpGameListeners(self.currentGame);
             });
         }
 
