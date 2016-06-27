@@ -91,7 +91,9 @@ function Confucius() {
 Confucius.prototype.localize = function (str, dictionary) {
     var self = this;
     var text = self.localeData[str] ? self.localeData[str] : str;
-    if (dictionary) for (var key in dictionary) text = text.replace(new RegExp(key, 'g'), dictionary[key].toString());
+    if (dictionary) for (var key in dictionary) { //noinspection JSUnfilteredForInLoop
+        text = text.replace(new RegExp(key, 'g'), dictionary[key].toString());
+    }
     return text;
 };
 
@@ -467,7 +469,7 @@ Confucius.prototype.saveGameAsCurrent = function (game, callback, numRetries) {
 
 Confucius.prototype.getPlayersRollData = function (callback) {
     var self = this;
-    self.db.find({steamID: {$in: Object.keys(self.currentGame.betsByPlayer)}}, function (error, result) {
+    self.db.collection('users').find({steamID: {$in: Object.keys(self.currentGame.betsByPlayer)}}, function (error, result) {
         if (error) {
             self.logger.error(error.stack || error);
             setTimeout(function () {
@@ -704,7 +706,7 @@ Confucius.prototype.createLogger = function () {
         print(localMsg);
     };
 
-    var localLogger = {
+    return {
 
         info: function (msg, dictionary, notify) {
             localLogFunc(logger.info, msg, dictionary, notify);
@@ -723,7 +725,6 @@ Confucius.prototype.createLogger = function () {
         }
 
     };
-    return localLogger;
 };
 
 Confucius.prototype.connectMongo = function (callback) {
