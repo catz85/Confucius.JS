@@ -371,6 +371,7 @@ Confucius.prototype.setUpGameListeners = function (game) {
     game.on('newGame', function (newGame, noRewrite) {
         if (noRewrite) {
             self.currentGame = newGame;
+            self.setUpGameListeners(self.currentGame);
         } else {
             self.saveGameAsCurrent(newGame, function () {
                 self.currentGame = newGame;
