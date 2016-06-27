@@ -469,25 +469,26 @@ Confucius.prototype.saveGameAsCurrent = function (game, callback, numRetries) {
 
 Confucius.prototype.getPlayersRollData = function (callback) {
     var self = this;
-    self.db.collection('users').find({steamID: {$in: Object.keys(self.currentGame.betsByPlayer)}}, function (error, result) {
-        if (error) {
-            self.logger.error(error.stack || error);
-            setTimeout(function () {
-                self.getPlayersRollData(callback);
-            }, RETRY_INTERVAL / 10);
-        } else {
-            var rollData = {};
-            async.forEachOfSeries(result, function (user, key, cb) {
-                rollData[user.steamID] = {
-                    avatar: user.avatar,
-                    chance: Number(self.currentGame.betsByPlayer[user.steamID].chance)
-                };
-                cb();
-            }, function () {
-                callback(rollData);
-            });
-        }
-    });
+    self.db.collection('users').find({steamID: {$in: Object.keys(self.currentGame.betsByPlayer)}})
+        .toArray(function (error, result) {
+            if (error) {
+                self.logger.error(error.stack || error);
+                setTimeout(function () {
+                    self.getPlayersRollData(callback);
+                }, RETRY_INTERVAL / 10);
+            } else {
+                var rollData = {};
+                async.forEachOfSeries(result, function (user, key, cb) {
+                    rollData[user.steamID] = {
+                        avatar: user.avatar,
+                        chance: Number(self.currentGame.betsByPlayer[user.steamID].chance)
+                    };
+                    cb();
+                }, function () {
+                    callback(rollData);
+                });
+            }
+        });
 };
 
 Confucius.prototype.steamLogon = function (callback) {
