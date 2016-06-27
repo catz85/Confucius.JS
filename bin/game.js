@@ -761,8 +761,7 @@ Game.prototype.resume = function (data) {
 
         } else if (self.state === State.ROLLING || self.state === State.SENDING) {
             self.winner = data.winner;
-            self.roll();
-         /*   self.selectWinner(function (winnerID) {
+            self.selectWinner(function (winnerID) {
                 self.winner = winnerID;
                 self.steamHelper.getSteamUser(winnerID, function (user) {
                     self.sortWonItems(user, function (items) {
@@ -789,7 +788,7 @@ Game.prototype.resume = function (data) {
                         });
                     });
                 });
-            });*/
+            });
         } else {
             self.winner = data.winner;
             self.currentBank = data.bank;
