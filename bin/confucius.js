@@ -477,11 +477,12 @@ Confucius.prototype.getPlayersRollData = function (callback) {
             }, RETRY_INTERVAL / 10);
         } else {
             var rollData = {};
-            async.forEachOfSeries(result, function (user) {
+            async.forEachOfSeries(result, function (user, key, cb) {
                 rollData[user.steamID] = {
                     avatar: user.avatar,
                     chance: Number(self.currentGame.betsByPlayer[user.steamID].chance)
                 };
+                cb();
             }, function () {
                 callback(rollData);
             });
