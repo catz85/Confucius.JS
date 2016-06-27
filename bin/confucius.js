@@ -91,13 +91,9 @@ function Confucius() {
 Confucius.prototype.localize = function (str, dictionary) {
     var self = this;
     var text = self.localeData[str] ? self.localeData[str] : str;
-    if (dictionary) {
-        for (var key in dictionary) {
-            text = text.replace(new RegExp(key, 'g'), dictionary[key].toString());
-        }
-    }
+    if (dictionary) for (var key in dictionary) text = text.replace(new RegExp(key, 'g'), dictionary[key].toString());
     return text;
-}
+};
 
 Confucius.prototype.initInfo = function (callback) {
     var self = this;
@@ -116,11 +112,11 @@ Confucius.prototype.initInfo = function (callback) {
             });
         }
     });
-}
+};
 
 Confucius.prototype.calcTradeOfferProcessingTime = function (numItems) {
     return TRADE_OFFER_ACCEPT_TIME + numItems * ITEM_HANDLING_TIME;
-}
+};
 
 Confucius.prototype.start = function () {
     var self = this;
@@ -165,7 +161,7 @@ Confucius.prototype.start = function () {
             });
         });
     });
-}
+};
 
 Confucius.prototype.setUpSocketListeners = function () {
     var self = this;
@@ -194,7 +190,7 @@ Confucius.prototype.setUpSocketListeners = function () {
         });
     });
 
-}
+};
 
 Confucius.prototype.sendStatus = function (socket) {
     var self = this;
@@ -214,7 +210,7 @@ Confucius.prototype.sendStatus = function (socket) {
         }
 
     });
-}
+};
 
 Confucius.prototype.checkEatenItems = function (callback) {
     var self = this;
@@ -236,7 +232,7 @@ Confucius.prototype.checkEatenItems = function (callback) {
                         result[item.id] = item;
                         return result;
                     }, {});
-                    self.steamHelper.getLastReceivedItems(timeCutoff, function (items, cost) {
+                    self.steamHelper.getLastReceivedItems(timeCutoff, function (items) {
                         if (items.length > 0) {
                             async.forEachOfSeries(items, function (data, index, cbf) {
                                 if (!allItems[data.items[0].id]) {
@@ -272,7 +268,7 @@ Confucius.prototype.checkEatenItems = function (callback) {
                     steamHelper: self.steamHelper,
                     logger: self.logger,
                     pauseTimer: -1,
-                    info: gameInfo,
+                    info: gameInfo
                 }, function (game) {
                     if (game)
                         timeCutoff = game.finishTime;
@@ -286,7 +282,7 @@ Confucius.prototype.checkEatenItems = function (callback) {
         }
     }
 
-}
+};
 
 Confucius.prototype.loadCurrentGame = function (callback) {
     var self = this;
@@ -318,7 +314,7 @@ Confucius.prototype.loadCurrentGame = function (callback) {
         }
     });
 
-}
+};
 
 Confucius.prototype.setUpGameListeners = function (game) {
     var self = this;
@@ -347,7 +343,7 @@ Confucius.prototype.setUpGameListeners = function (game) {
                 self.socketHandler.sendToUser(steamID, 'updateProfile', {
                     won: users[0].won,
                     maxWin: users[0].maxWin,
-                    totalIncome: users[0].totalIncome,
+                    totalIncome: users[0].totalIncome
                 });
             } else {
                 self.logger.error(err);
@@ -368,7 +364,7 @@ Confucius.prototype.setUpGameListeners = function (game) {
         self.socketHandler.adminClients.forEach(function (socket) {
             self.sendStatus(socket);
         });
-    })
+    });
 
     game.on('newGame', function (newGame, noRewrite) {
         if (noRewrite) {
@@ -386,6 +382,12 @@ Confucius.prototype.setUpGameListeners = function (game) {
         })
     });
 
+    game.on('rollStarted', function (data) {
+        self.getPlayersRollData(function (avatars) {
+            self.socketHandler.send('rollStart', avatars, data);
+        });
+    });
+
     game.on('rollFinished', function (data) {
         self.socketHandler.send('clear', data);
     });
@@ -400,7 +402,7 @@ Confucius.prototype.setUpGameListeners = function (game) {
         });
     });
 
-}
+};
 
 Confucius.prototype.getUserStatus = function (steamID, callback) {
     var self = this;
@@ -414,12 +416,12 @@ Confucius.prototype.getUserStatus = function (steamID, callback) {
             callback(users[0].status ? users[0].status : UserStatus.DEFAULT);
         }
     });
-}
+};
 
 Confucius.prototype.saveGameAsCurrent = function (game, callback, numRetries) {
     var self = this;
     self.db.collection('info').updateOne({name: 'currentGame'}, {$set: {value: game.id}}, {w: 1},
-        function (error, result) {
+        function (error) {
             if (error) {
                 self.logger.error(error.stack || error);
                 if (numRetries)
@@ -442,7 +444,7 @@ Confucius.prototype.saveGameAsCurrent = function (game, callback, numRetries) {
                     state: game.state,
                     finishTime: -1,
                     numItems: game.numItems
-                }, {w: 1}, function (err, result) {
+                }, {w: 1}, function (err) {
                     if (err) {
                         if (numRetries)
                             numRetries = 1;
@@ -461,11 +463,33 @@ Confucius.prototype.saveGameAsCurrent = function (game, callback, numRetries) {
             }
         });
 
-}
+};
+
+Confucius.prototype.getPlayersRollData = function (callback) {
+    var self = this;
+    self.db.find({steamID: {$in: Object.keys(self.currentGame.betsByPlayer)}}, function (error, result) {
+        if (error) {
+            self.logger.error(error.stack || error);
+            setTimeout(function () {
+                self.getPlayersRollData(callback);
+            }, RETRY_INTERVAL / 10);
+        } else {
+            var rollData = {};
+            async.forEachOfSeries(result, function (user) {
+                rollData[user.steamID] = {
+                    avatar: user.avatar,
+                    chance: Number(self.currentGame.betsByPlayer[user.steamID].chance)
+                };
+            }, function () {
+                callback(rollData);
+            });
+        }
+    });
+};
 
 Confucius.prototype.steamLogon = function (callback) {
     var self = this;
-    self.marketHelper = new MarketHelper(self.info.backpackAPIKey, self.info.appID, self.info.priceUpdateInterval,
+    self.marketHelper = new MarketHelper(self.info['backpackAPIKey'], self.info['appID'], self.info['priceUpdateInterval'],
         self.logger);
     self.marketHelper.start(function () {
         var logOnDetails = {
@@ -495,7 +519,7 @@ Confucius.prototype.steamLogon = function (callback) {
             callback();
         });
     });
-}
+};
 
 Confucius.prototype.handleTradeOffer = function (offer) {
     var self = this;
@@ -568,7 +592,7 @@ Confucius.prototype.handleTradeOffer = function (offer) {
             }
         }
     }
-}
+};
 
 Confucius.prototype.processItems = function (offer, callback) {
     var self = this;
@@ -593,7 +617,7 @@ Confucius.prototype.processItems = function (offer, callback) {
     }, function () {
         callback(items, totalCost, -1);
     });
-}
+};
 
 Confucius.prototype.declineBet = function (offer, reason) {
     var self = this;
@@ -603,12 +627,12 @@ Confucius.prototype.declineBet = function (offer, reason) {
         self.socketHandler.sendToUser(offer.partner.getSteamID64(), 'offerDeclined',
             reason);
     });
-}
+};
 
 Confucius.prototype.notifyAdmins = function (msg, type, dictionary) {
     var self = this;
     self.socketHandler.sendToAdmins('notification', msg, type, dictionary);
-}
+};
 
 Confucius.prototype.terminate = function () {
     var self = this;
@@ -618,7 +642,7 @@ Confucius.prototype.terminate = function () {
     if (self.marketHelper)
         clearTimeout(self.marketHelper.taskID);
     try {
-        self.steamHelper.steamCommunity.chatLogoff()
+        self.steamHelper.steamCommunity.chatLogoff();
         self.steamHelper.steamUser.logOff();
     } catch (err) {
 
@@ -627,21 +651,21 @@ Confucius.prototype.terminate = function () {
             process.exit(0);
         }, 2000);
     }
-}
+};
 
 Confucius.prototype.createLogger = function () {
     var self = this;
 
     function formatter(args) {
         var date = moment().format('HH:mm:ss');
-        var logMessage = '[' + date + ' ' + args.level.toUpperCase() + ']: ' + args.message;
-        return logMessage;
+        return '[' + date + ' ' + args.level.toUpperCase() + ']: ' + args.message;
     }
 
     var logDataFile = self.config['logDirectory'] + '/logdata.json';
     var dateString = moment().format('YYYY-MM-DD HH-mm-ss');
+    var logData = null;
     if (fs.existsSync(logDataFile)) {
-        var logData = JSON.parse(fs.readFileSync(logDataFile, 'utf-8'));
+        logData = JSON.parse(fs.readFileSync(logDataFile, 'utf-8'));
         if (fs.existsSync(self.config['logDirectory'] + '/latest.log')) {
             fs.rename(self.config['logDirectory'] + '/latest.log', self.config['logDirectory']
                 + '/' + logData['lastDate'] + '.log');
@@ -649,7 +673,7 @@ Confucius.prototype.createLogger = function () {
         logData['lastDate'] = dateString;
         fs.writeFileSync(logDataFile, JSON.stringify(logData), 'utf-8');
     } else {
-        var logData = {lastDate: dateString};
+        logData = {lastDate: dateString};
         fs.writeFileSync(logDataFile, JSON.stringify(logData), 'utf-8');
     }
     var logger = new winston.Logger({
@@ -698,9 +722,9 @@ Confucius.prototype.createLogger = function () {
             return self.localize(msg, dictionary);
         }
 
-    }
+    };
     return localLogger;
-}
+};
 
 Confucius.prototype.connectMongo = function (callback) {
     var self = this;
@@ -716,7 +740,7 @@ Confucius.prototype.connectMongo = function (callback) {
                 callback(db);
         }
     });
-}
+};
 
 const INSTANCE = new Confucius();
 INSTANCE.start();

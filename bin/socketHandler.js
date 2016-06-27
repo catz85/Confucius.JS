@@ -11,18 +11,9 @@ function SocketHandler(port) {
     this.io = require('socket.io')(this.app);
     this.clients = {};
     this.adminClients = [];
-    this.ipCooldown = {};
     this.clientsBySteamID = {};
     this.steamIDByClients = {};
     this.adminListeners = [];
-}
-
-SocketHandler.prototype.hasValue = function (object, value) {
-    for (var key in object) {
-        if (object[key] === value)
-            return true;
-    }
-    return false;
 }
 
 SocketHandler.prototype.setUpListeners = function () {
@@ -93,12 +84,12 @@ SocketHandler.prototype.setUpListeners = function () {
         }
 
     });
-}
+};
 
 SocketHandler.prototype.addEventListener = function (event, listener) {
     var self = this;
     self.io.on(event, listener);
-}
+};
 
 SocketHandler.prototype.addAdminEventListener = function (event, listener) {
     var self = this;
@@ -111,14 +102,14 @@ SocketHandler.prototype.addAdminEventListener = function (event, listener) {
         });
         callback();
     }, function () {
-        return;
+
     });
-}
+};
 
 SocketHandler.prototype.send = function () {
     var self = this;
     self.io.emit.apply(self.io, arguments);
-}
+};
 
 SocketHandler.prototype.sendToUser = function () {
     var self = this;
@@ -130,7 +121,7 @@ SocketHandler.prototype.sendToUser = function () {
             socket.emit(newArgs);
         });
     }
-}
+};
 
 SocketHandler.prototype.sendToAdmins = function () {
     var self = this;
@@ -139,8 +130,8 @@ SocketHandler.prototype.sendToAdmins = function () {
         socket.emit.apply(socket, args);
         callback();
     }, function () {
-        return;
+
     });
-}
+};
 
 module.exports = SocketHandler;

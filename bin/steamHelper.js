@@ -58,12 +58,12 @@ SteamHelper.prototype.login = function (callback) {
         }
     }, RETRY_INTERVAL * 2);
     self.steamUser.logOn(details);
-}
+};
 
 SteamHelper.prototype.terminate = function () {
     var self = this;
     self.emit('terminate');
-}
+};
 
 SteamHelper.prototype.loadMyInventory = function (appID, callback, numRetries) {
     var self = this;
@@ -87,7 +87,7 @@ SteamHelper.prototype.loadMyInventory = function (appID, callback, numRetries) {
             callback(items);
         }
     });
-}
+};
 
 SteamHelper.prototype.setUpListeners = function () {
     var self = this;
@@ -118,7 +118,6 @@ SteamHelper.prototype.setUpListeners = function () {
                 self.logger.error('error.steam.apiKey');
                 self.logger.error(err.stack || err);
                 self.terminate();
-                return;
             } else {
                 self.logger.info('steam.apiKey', {"%s%": self.tradeOfferManager.apiKey});
                 self.steamCommunity.setCookies(cookies);
@@ -147,13 +146,13 @@ SteamHelper.prototype.setUpListeners = function () {
         });
 
     });
-}
+};
 
 SteamHelper.prototype.sendItems = function (user, token, items, msg, callback, numRetries) {
     var self = this;
     var offer = self.tradeOfferManager.createOffer(user);
     offer.addMyItems(items);
-    offer.send(msg, token, function (err, result) {
+    offer.send(msg, token, function (err) {
         if (!err) {
             callback(offer);
         } else {
@@ -173,13 +172,13 @@ SteamHelper.prototype.sendItems = function (user, token, items, msg, callback, n
             }
         }
     });
-}
+};
 
 SteamHelper.prototype.getTradeOffers = function (filter, callback, numRetries) {
     var self = this;
     if (!callback)
         callback = function (arg0, arg1) {
-            return;
+
         };
     self.tradeOfferManager.getOffers(filter, null, function (err, sentOffers, receivedOffers) {
         if (err) {
@@ -202,14 +201,14 @@ SteamHelper.prototype.getTradeOffers = function (filter, callback, numRetries) {
             callback(sentOffers, receivedOffers);
         }
     });
-}
+};
 
 SteamHelper.prototype.forceCheckTradeOffers = function (callback) {
     var self = this;
     self.doingForceCheck = true;
     if (!callback)
         callback = function () {
-            return;
+
         };
     self.getTradeOffers(1, function (sentOffers, receivedOffers) {
         async.forEachOfSeries(receivedOffers, function (offer, key, cb) {
@@ -222,13 +221,13 @@ SteamHelper.prototype.forceCheckTradeOffers = function (callback) {
             callback();
         });
     });
-}
+};
 
 SteamHelper.prototype.getActiveSentTrades = function (callback) {
     var self = this;
     if (!callback)
         callback = function (arg0) {
-            return;
+
         };
     self.getTradeOffers(1, function (sentOffers) {
         var trades = [];
@@ -250,13 +249,13 @@ SteamHelper.prototype.getActiveSentTrades = function (callback) {
             callback(trades);
         });
     });
-}
+};
 
 SteamHelper.prototype.acceptTradeOffer = function (offer, callback, numRetries) {
     var self = this;
     if (!callback)
         callback = function (arg0) {
-            return;
+
         };
     offer.accept(function (err) {
         if (err) {
@@ -296,7 +295,7 @@ SteamHelper.prototype.acceptTradeOffer = function (offer, callback, numRetries) 
 
         }
     });
-}
+};
 
 SteamHelper.prototype.declineTradeOffer = function (offer, callback, numRetries) {
     var self = this;
@@ -330,7 +329,7 @@ SteamHelper.prototype.declineTradeOffer = function (offer, callback, numRetries)
             callback();
         }
     });
-}
+};
 
 SteamHelper.prototype.getLastReceivedItems = function (timeCutoff, callback, numRetries) {
     var self = this;
@@ -383,13 +382,13 @@ SteamHelper.prototype.getLastReceivedItems = function (timeCutoff, callback, num
                 callback(lastItems, totalCost);
         });
     });
-}
+};
 
 SteamHelper.prototype.getSteamUser = function (steamID64, callback, numRetries) {
     var self = this;
     if (!callback)
         callback = function (arg0) {
-            return;
+
         };
     self.steamCommunity.getSteamUser(new SteamCommunity.SteamID(steamID64), function (err, user) {
         if (err) {
@@ -412,6 +411,6 @@ SteamHelper.prototype.getSteamUser = function (steamID64, callback, numRetries) 
             callback(user);
         }
     });
-}
+};
 
 module.exports = SteamHelper;

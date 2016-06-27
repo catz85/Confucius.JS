@@ -6,7 +6,6 @@ var async = require('async');
 var crypto = require('crypto');
 var events = require('events');
 var util = require('util');
-var SteamCommunity = require('steamcommunity');
 
 util.inherits(Game, events.EventEmitter);
 
@@ -18,7 +17,7 @@ const State = {
     SENT: 4,
     ERROR: 5,
     PAUSED: 6
-}
+};
 
 const NotificationType = {
     INFO: 'information',
@@ -66,7 +65,7 @@ Game.State = State;
 
 Game.setOldGameListener = function (listener) {
     Game.oldGameListener = listener;
-}
+};
 
 Game.createFromDB = function (data, callback, numRetries) {
     data.db.collection('games').find({id: data.id}).toArray(function (err, items) {
@@ -112,7 +111,7 @@ Game.createFromDB = function (data, callback, numRetries) {
             }
         }
     });
-}
+};
 
 Game.fixGameErrors = function (db, marketHelper, steamHelper, info, logger, callback) {
     db.collection('games').find({state: State.ERROR}).toArray(function (err, games) {
@@ -125,7 +124,7 @@ Game.fixGameErrors = function (db, marketHelper, steamHelper, info, logger, call
                     steamHelper: steamHelper,
                     info: info,
                     logger: logger,
-                    pauseTimer: -1,
+                    pauseTimer: -1
                 }, function (game) {
                     Game.oldGameListener(game);
                     game.setState(State.SENDING, function () {
@@ -154,7 +153,7 @@ Game.fixGameErrors = function (db, marketHelper, steamHelper, info, logger, call
                 callback();
         }
     });
-}
+};
 
 Game.prototype.addBet = function (better, items, totalCost, callback, numRetries) {
     var self = this;
@@ -167,7 +166,7 @@ Game.prototype.addBet = function (better, items, totalCost, callback, numRetries
             name: item.name,
             market_hash_name: item.market_hash_name,
             cost: item.cost,
-            image: item.getImageURL('full'),
+            image: item.getImageURL('full')
         };
         itemsArray.push(newItem);
         cb();
@@ -186,7 +185,7 @@ Game.prototype.addBet = function (better, items, totalCost, callback, numRetries
                 $push: {bets: bet},
                 $set: {numItems: self.numItems + itemsArray.length}
             },
-            {w: 1}, function (err, result) {
+            {w: 1}, function (err) {
                 if (err) {
                     self.logger.error('game.error.bet');
                     self.logger.error(err.stack || err);
@@ -211,20 +210,21 @@ Game.prototype.addBet = function (better, items, totalCost, callback, numRetries
                 }
             });
     });
-}
+};
 
 Game.prototype.sortBetsByPlayer = function (callback) {
     var self = this;
     var sortedItems = {};
     self.getAllItems(function (gameItems, numBetsByPlayer) {
         async.forEachOfSeries(gameItems, function (item, index, cb) {
+            var data = null;
             if (sortedItems[item.owner]) {
-                var data = self.marketHelper.getItemData(item.market_hash_name);
+                data = self.marketHelper.getItemData(item.market_hash_name);
                 sortedItems[item.owner].totalCost += data.value;
                 sortedItems[item.owner].count++;
             } else {
                 sortedItems[item.owner] = {totalCost: 0, count: 0, chance: 0};
-                var data = self.marketHelper.getItemData(item.market_hash_name);
+                data = self.marketHelper.getItemData(item.market_hash_name);
                 sortedItems[item.owner].totalCost += data.value;
                 sortedItems[item.owner].count++;
                 sortedItems[item.owner].numBets = numBetsByPlayer[item.owner];
@@ -238,7 +238,7 @@ Game.prototype.sortBetsByPlayer = function (callback) {
             });
         });
     });
-}
+};
 
 Game.prototype.recalculateChance = function (callback) {
     var self = this;
@@ -249,12 +249,12 @@ Game.prototype.recalculateChance = function (callback) {
         if (callback)
             callback();
     });
-}
+};
 
 Game.prototype.setState = function (newState, callback, numRetries) {
     var self = this;
     if (self.state !== newState) {
-        self.db.collection('games').updateOne({id: self.id}, {$set: {state: newState}}, {w: 1}, function (err, result) {
+        self.db.collection('games').updateOne({id: self.id}, {$set: {state: newState}}, {w: 1}, function (err) {
             if (err) {
                 if (!numRetries)
                     numRetries = 1;
@@ -286,7 +286,7 @@ Game.prototype.setState = function (newState, callback, numRetries) {
         if (callback)
             callback();
     }
-}
+};
 
 Game.prototype.selectWinner = function (callback) {
     var self = this;
@@ -304,19 +304,19 @@ Game.prototype.selectWinner = function (callback) {
             callback(null);
         });
     }
-}
+};
 
 
 Game.prototype.pause = function (callback) {
     var self = this;
     if (!callback)
         callback = function () {
-            return;
-        }
+
+        };
     if (self.state === State.ACTIVE || self.state === State.WAITING) {
         var time = self.gameTimer;
         clearInterval(self.timerID);
-        self.db.collection('info').updateOne({name: 'pauseTimer'}, {$set: {value: time}}, {w: 1}, function (err, result) {
+        self.db.collection('info').updateOne({name: 'pauseTimer'}, {$set: {value: time}}, {w: 1}, function (err) {
             if (err) {
                 self.logger.error(err.stack || err);
                 self.startTimer();
@@ -335,11 +335,11 @@ Game.prototype.pause = function (callback) {
 Game.prototype.unpause = function (callback) {
     if (!callback)
         callback = function () {
-            return;
-        }
+
+        };
     var self = this;
     if (self.state === State.PAUSED) {
-        self.db.collection('info').updateOne({name: 'pauseTimer'}, {$set: {value: -1}}, {w: 1}, function (err, result) {
+        self.db.collection('info').updateOne({name: 'pauseTimer'}, {$set: {value: -1}}, {w: 1}, function (err) {
             if (err) {
                 self.logger.error(err.stack || err);
                 callback(err);
@@ -355,12 +355,12 @@ Game.prototype.unpause = function (callback) {
     } else {
         callback('game.error.unpause');
     }
-}
+};
 
 Game.prototype.saveFinishTime = function (time, callback, numRetries) {
     var self = this;
     var id = self.id;
-    self.db.collection('games').updateOne({id: id}, {$set: {finishTime: time}}, {w: 1}, function (error, result) {
+    self.db.collection('games').updateOne({id: id}, {$set: {finishTime: time}}, {w: 1}, function (error) {
         if (error) {
             if (!numRetries)
                 numRetries = 1;
@@ -376,7 +376,7 @@ Game.prototype.saveFinishTime = function (time, callback, numRetries) {
             callback();
         }
     });
-}
+};
 
 Game.prototype.roll = function (callback) {
     var self = this;
@@ -392,7 +392,15 @@ Game.prototype.roll = function (callback) {
                         "%winner%": winner.name
                     },
                     NotificationType.INFO);
-                //  self.emit('roll', winner);
+
+                self.emit('rollStarted', {
+                    winnerName: winner.name,
+                    winnerChance: self.betsByPlayer[winnerID].chance,
+                    winnerBank: self.currentBank,
+                    winnerTicket: Number((self.currentBank * self.float).toFixed(0)),
+                    winnerNumber: self.float,
+                    winnerAvatar: winner.getAvatarURL('medium')
+                });
                 var rollTime = Date.now();
                 self.finishTime = Date.now();
                 self.saveFinishTime(self.finishTime, function () {
@@ -406,18 +414,17 @@ Game.prototype.roll = function (callback) {
                                     winnerName: winner.name,
                                     winnerAvatar: winner.getAvatarURL('full'),
                                     bank: self.currentBank,
-                                    chance: (self.betsByPlayer[winnerID].totalCost /
-                                    self.currentBank).toFixed(2)
+                                    chance: Number(self.betsByPlayer[winnerID].chance)
                                 });
-                                self.submit(winner, (self.betsByPlayer[winnerID].totalCost /
-                                self.currentBank).toFixed(2), function () {
+                                self.submit(winner, Number(self.betsByPlayer[winnerID].totalCost /
+                                    self.currentBank), function () {
                                     self.setState(State.SENDING, function () {
                                         self.sendWonItems(wonItems, winner, token, function (offer, err) {
 
                                             self.setState(err ? State.ERROR : State.SENT, function () {
                                                 self.emit('saveGame', newGame);
                                                 Game.fixGameErrors(self.db, self.marketHelper,
-                                                    self.steamHelper, self.info, self.logger);
+                                                    self.steamHelper, self.info, self.logger, callback);
                                             });
                                         });
                                     });
@@ -430,7 +437,7 @@ Game.prototype.roll = function (callback) {
             });
         });
     });
-}
+};
 
 Game.prototype.getAllItems = function (callback) {
     var self = this;
@@ -453,7 +460,7 @@ Game.prototype.getAllItems = function (callback) {
     }, function () {
         callback(items, numBetsByPlayer);
     });
-}
+};
 
 Game.prototype.getUserToken = function (steamID, callback, numRetries) {
     var self = this;
@@ -482,7 +489,7 @@ Game.prototype.getUserToken = function (steamID, callback, numRetries) {
             }
         }
     });
-}
+};
 
 Game.prototype.sortWonItems = function (user, callback) {
     var self = this;
@@ -497,7 +504,7 @@ Game.prototype.sortWonItems = function (user, callback) {
                     return (a.cost > b.cost) ? 1 : ((b.cost > a.cost) ? -1 : 0);
                 });
                 async.forEachOfSeries(gameItems, function (item, key, cb) {
-                    var inventoryItem = items.filter(function (o, i, a) {
+                    var inventoryItem = items.filter(function (o) {
                         return o.id === item.id;
                     });
                     if (inventoryItem && inventoryItem[0]) {
@@ -534,7 +541,7 @@ Game.prototype.submit = function (winner, percentage, callback) {
             percentage: percentage,
             winnerAvatar: winner.getAvatarURL('full')
         }
-    }, {w: 1}, function (err, res) {
+    }, {w: 1}, function (err) {
         if (err) {
             self.logger.error(err.stack || err);
             setTimeout(function () {
@@ -549,7 +556,7 @@ Game.prototype.submit = function (winner, percentage, callback) {
                 $max: {
                     maxWin: self.currentBank
                 }
-            }, function (err1, result) {
+            }, function (err1) {
                 if (err1) {
                     self.logger.error(err1.stack || err1);
                     setTimeout(function () {
@@ -566,12 +573,12 @@ Game.prototype.submit = function (winner, percentage, callback) {
             });
         }
     });
-}
+};
 
 Game.prototype.updateUserStats = function (callback) {
     var self = this;
     self.db.collection('users').updateMany({steamID: {$in: Object.keys(self.betsByPlayer)}},
-        {$inc: {totalGames: 1}}, {w: 1}, function (err1, result) {
+        {$inc: {totalGames: 1}}, {w: 1}, function (err1) {
             if (err1) {
                 self.logger.error(err1.stack || err1);
                 setTimeout(function () {
@@ -581,7 +588,7 @@ Game.prototype.updateUserStats = function (callback) {
                 callback();
             }
         });
-}
+};
 
 Game.prototype.updateGlobalStats = function (callback) {
     var self = this;
@@ -611,7 +618,7 @@ Game.prototype.updateGamesToday = function (callback) {
             callback(games);
         }
     });
-}
+};
 
 Game.prototype.updateItemsToday = function (games, callback) {
     var itemsCount = 0;
@@ -621,13 +628,13 @@ Game.prototype.updateItemsToday = function (games, callback) {
     }, function () {
         callback(itemsCount);
     });
-}
+};
 
 Game.prototype.updateJackpot = function (callback) {
     var self = this;
     if (self.currentBank > self.info.jackpot) {
         self.db.collection('info').updateOne({name: 'jackpot'},
-            {$set: {value: self.currentBank}}, function (err, result) {
+            {$set: {value: self.currentBank}}, function (err) {
                 if (err) {
                     self.logger.error(err.stack || err);
                     setTimeout(function () {
@@ -640,7 +647,7 @@ Game.prototype.updateJackpot = function (callback) {
     } else {
         callback(self.info.jackpot);
     }
-}
+};
 
 Game.prototype.sendWonItems = function (items, winner, token, callback) {
     var self = this;
@@ -657,7 +664,7 @@ Game.prototype.sendWonItems = function (items, winner, token, callback) {
             "%site%": self.info.domain
         }), callback);
     }
-}
+};
 
 Game.prototype.update = function (callback) {
     var self = this;
@@ -666,7 +673,7 @@ Game.prototype.update = function (callback) {
             bank: self.currentBank,
             numItems: self.numItems
         }
-    }, {w: 1}, function (err, result) {
+    }, {w: 1}, function (err) {
         if (err) {
             self.logger.error('game.error.update');
             setTimeout(function () {
@@ -677,7 +684,7 @@ Game.prototype.update = function (callback) {
                 self.recalculateChance(function () {
                     if (self.state === State.WAITING && Object.keys(self.betsByPlayer).length >= 2) {
                         var start = Date.now();
-                        self.db.collection('games').updateOne({id: self.id}, {$set: {startTime: start}}, {w: 1}, function (err1, result) {
+                        self.db.collection('games').updateOne({id: self.id}, {$set: {startTime: start}}, {w: 1}, function (err1) {
                             if (err1) {
                                 self.logger.error('game.error.update');
                                 setTimeout(function () {
@@ -725,7 +732,7 @@ Game.prototype.update = function (callback) {
             });
         }
     });
-}
+};
 
 Game.prototype.resume = function (data) {
     var self = this;
@@ -801,12 +808,11 @@ Game.prototype.resume = function (data) {
                     self.startTimer();
                 }
             } else if (Object.keys(self.betsByPlayer).length >= 2) {
-                var start = Date.now();
                 self.update();
             }
         }
     });
-}
+};
 
 Game.prototype.startTimer = function () {
     var self = this;
@@ -822,6 +828,6 @@ Game.prototype.startTimer = function () {
             }, 1000);
         });
     }
-}
+};
 
 module.exports = Game;

@@ -10,7 +10,6 @@ const WEB_URL = 'http://backpack.tf/api/IGetMarketPrices/v1/?format=json&appid='
 const RETRY_INTERVAL = 3000;
 
 function MarketHelper(APIKey, appID, updateInterval, logger) {
-    var self = this;
     this.APIKey = APIKey;
     this.appID = appID;
     this.taskID = -1;
@@ -31,7 +30,7 @@ function MarketHelper(APIKey, appID, updateInterval, logger) {
     }
 }
 
-MarketHelper.prototype.start = function(callback) {
+MarketHelper.prototype.start = function (callback) {
     var self = this;
 
     if (fs.existsSync(FILE_NAME)) {
@@ -58,11 +57,11 @@ MarketHelper.prototype.start = function(callback) {
         self.lastUpdate = 0;
         self.cachePrices(callback);
     }
-}
+};
 
 MarketHelper.prototype.getItemData = function (marketHashName) {
     return this.priceData[marketHashName];
-}
+};
 
 MarketHelper.prototype.cachePrices = function (callback) {
     var self = this;
@@ -99,6 +98,6 @@ MarketHelper.prototype.cachePrices = function (callback) {
             }
         }
     });
-}
+};
 
 module.exports = MarketHelper;
