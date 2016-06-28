@@ -16,6 +16,7 @@ util.inherits(SteamHelper, events.EventEmitter);
 const MAX_RETRIES = 5;
 const RETRY_INTERVAL = 3000;
 
+const POLL_INTERVAL = 10000;
 
 function SteamHelper(accountDetails, marketHelper, logger) {
     this.steamUser = new SteamUser();
@@ -123,6 +124,9 @@ SteamHelper.prototype.setUpListeners = function () {
                 if (!self.loggedIn) {
                     self.loggedIn = true;
                 } else {
+                    self.tradeOfferManager.on('newOffer', function(offer) {
+                        console.log('new offer!');
+                    });
                     self.steamCommunity.startConfirmationChecker(30000, self.accountDetails['identitySecret']);
                     self.steamCommunity.on('sessionExpired', function (err) {
                         self.logger.error('steam.error.expired');
@@ -151,7 +155,7 @@ SteamHelper.prototype.startTradeOfferChecker = function() {
     var self = this;
     setInterval(function() {
         self.forceCheckTradeOffers();
-    }, 3000);
+    }, POLL_INTERVAL);
 };
 
 SteamHelper.prototype.sendItems = function (user, token, items, msg, callback, numRetries) {
