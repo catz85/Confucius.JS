@@ -560,7 +560,7 @@ Confucius.prototype.handleTradeOffer = function (offer) {
             if (self.calcTradeOfferProcessingTime(offer.itemsToReceive.length) < self.currentGame.gameTimer * 1000) {
                 self.currentGame.getUserToken(offer.partner.getSteamID64(), function (token) {
                     if (token) {
-                        if (offer.state === 2 && !offer._isGlitched()) {
+                        if (offer.state === 2 && !offer._isGlitched() && offer.itemsToReceive && offer.itemsToReceive.length > 0) {
                             self.steamHelper.getSteamUser(offer.partner.getSteamID64(), function (user) {
                                 self.logger.info('trade.received', {
                                         "%id%": offer.id,
