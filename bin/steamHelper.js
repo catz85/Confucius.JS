@@ -37,7 +37,6 @@ function SteamHelper(accountDetails, marketHelper, logger) {
             return msg;
         }
     };
-    this.doingForceCheck = false;
     this.loggedIn = false;
     this.tempData = {};
     this.setUpListeners();
@@ -104,12 +103,8 @@ SteamHelper.prototype.setUpListeners = function () {
                 "steam": self.steamUser,
                 "community": self.steamCommunity,
                 "domain": self.accountDetails['domain'],
-                "language": 'en'
-            });
-
-            self.tradeOfferManager.on('newOffer', function (offer) {
-                if (!self.doingForceCheck)
-                    self.emit('autoOffer', offer);
+                "language": 'en',
+                "pollInterval": -1
             });
         }
 
@@ -146,6 +141,13 @@ SteamHelper.prototype.setUpListeners = function () {
         });
 
     });
+};
+
+SteamHelper.prototype.startTradeOfferChecker = function() {
+    var self = this;
+    setInterval(function() {
+        self.forceCheckTradeOffers();
+    }, 3000);
 };
 
 SteamHelper.prototype.sendItems = function (user, token, items, msg, callback, numRetries) {
@@ -205,7 +207,6 @@ SteamHelper.prototype.getTradeOffers = function (filter, callback, numRetries) {
 
 SteamHelper.prototype.forceCheckTradeOffers = function (callback) {
     var self = this;
-    self.doingForceCheck = true;
     if (!callback)
         callback = function () {
 
@@ -217,7 +218,6 @@ SteamHelper.prototype.forceCheckTradeOffers = function (callback) {
             }
             cb();
         }, function () {
-            self.doingForceCheck = false;
             callback();
         });
     });

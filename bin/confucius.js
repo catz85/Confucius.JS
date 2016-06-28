@@ -157,11 +157,7 @@ Confucius.prototype.start = function () {
                             if (resumeCallback)
                                 resumeCallback();
                             self.socketHandler.sendToAdmins('gameLoaded');
-                            self.steamHelper.forceCheckTradeOffers(function () {
-                                self.steamHelper.on('autoOffer', function (offer) {
-                                    self.handleTradeOffer(offer);
-                                });
-                            })
+                            self.steamHelper.startTradeOfferChecker();
                         });
                     });
                 });
@@ -538,6 +534,10 @@ Confucius.prototype.steamLogon = function (callback) {
         });
 
         self.steamHelper.on('terminate', function () {
+            self.terminate();
+        });
+
+        self.steamHelper.on('acceptingError', function () {
             self.terminate();
         });
 
