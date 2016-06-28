@@ -86,6 +86,9 @@ function Confucius() {
     this.currentGame = null;
     this.processedOffers = [];
     this.localeData = JSON.parse(fs.readFileSync('./lang/' + this.config.language + '.json', 'utf-8'));
+    this.isRolling = false;
+    this.rollStart = 0;
+    this.lastRollData = [];
 }
 
 Confucius.prototype.localize = function (str, dictionary) {
@@ -130,6 +133,9 @@ Confucius.prototype.start = function () {
             self.socketHandler.addEventListener('connection', function (socket) {
                 if (self.currentGame) {
                     socket.emit('updateInfo', self.currentGame.betsByPlayer);
+                }
+                if (self.isRolling) {
+                    socket.emit(self.lastRollData[0], self.lastRollData[1], Date.now() - self.rollStart);
                 }
 
             });
@@ -387,12 +393,16 @@ Confucius.prototype.setUpGameListeners = function (game) {
     });
 
     game.on('rollStarted', function (data, game) {
+        self.isRolling = true;
+        this.rollStart = Date.now();
         self.getPlayersRollData(game, function (avatars) {
-            self.socketHandler.send('rollStart', avatars, data);
+            this.lastRollData = [avatars, data];
+            self.socketHandler.send('rollStart', avatars, data, 0);
         });
     });
 
     game.on('rollFinished', function (data) {
+        self.isRolling = false;
         self.socketHandler.send('clear', data);
     });
 
