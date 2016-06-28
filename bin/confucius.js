@@ -153,9 +153,9 @@ Confucius.prototype.start = function () {
                     }, self.logger, function () {
                         self.setUpSocketListeners();
                         self.setUpGameListeners(self.currentGame);
+                        if (resumeCallback)
+                            resumeCallback();
                         self.checkEatenItems(function () {
-                            if (resumeCallback)
-                                resumeCallback();
                             self.socketHandler.sendToAdmins('gameLoaded');
                             self.steamHelper.startTradeOfferChecker();
                         });
