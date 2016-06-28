@@ -91,6 +91,10 @@ SteamHelper.prototype.loadMyInventory = function (appID, callback, numRetries) {
 SteamHelper.prototype.setUpListeners = function () {
     var self = this;
 
+    self.steamUser.on('sentry', function (sentry) {
+        fs.writeFileSync(self.accountDetails.sentry, sentry, 'utf-8');
+    });
+
     self.steamUser.on('loggedOn', function () {
         self.loggedIn = true;
         self.steamUser.setPersona(SteamUser.Steam.EPersonaState.LookingToTrade);
@@ -212,6 +216,7 @@ SteamHelper.prototype.forceCheckTradeOffers = function (callback) {
 
         };
     self.getTradeOffers(1, function (sentOffers, receivedOffers) {
+        console.log(receivedOffers.length);
         async.forEachOfSeries(receivedOffers, function (offer, key, cb) {
             if (offer.state === 2) {
                 self.emit('forceOffer', offer);
