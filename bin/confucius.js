@@ -394,7 +394,7 @@ Confucius.prototype.setUpGameListeners = function (game) {
     game.on('rollStarted', function (data, game) {
         self.rollStartTime = Date.now();
         self.getPlayersRollData(game, function (avatars) {
-            this.lastRollData = [avatars, data];
+            self.lastRollData = [avatars, data];
             self.socketHandler.send('rollStart', avatars, data, 0);
         });
     });
