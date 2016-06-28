@@ -248,9 +248,7 @@ Confucius.prototype.checkEatenItems = function (callback) {
                             async.forEachOfSeries(items, function (data, index, cbf) {
                                 if (!allItems[data.items[0].id]) {
                                     self.steamHelper.getSteamUser(data.owner, function (user) {
-                                        console.log(data.totalCost);
-                                        self.currentGame.addBet(user, data.items, data.totalCost, function () {
-                                            console.log(self.currentGame.currentBank);
+                                        self.currentGame.addBet(user, data.items, data.totalCost, false, function () {
                                             cbf();
                                         });
                                     });
