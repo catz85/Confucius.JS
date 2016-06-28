@@ -154,13 +154,13 @@ Confucius.prototype.start = function () {
                         self.setUpSocketListeners();
                         self.setUpGameListeners(self.currentGame);
                         if (resumeCallback)
-                            resumeCallback(function() {
+                            resumeCallback(function () {
                                 self.checkEatenItems(function () {
                                     self.socketHandler.sendToAdmins('gameLoaded');
                                     self.steamHelper.startTradeOfferChecker();
                                 });
                             });
-                       else {
+                        else {
                             self.checkEatenItems(function () {
                                 self.socketHandler.sendToAdmins('gameLoaded');
                                 self.steamHelper.startTradeOfferChecker();
@@ -341,15 +341,17 @@ Confucius.prototype.setUpGameListeners = function (game) {
         self.socketHandler.send('updateStats', stats);
     });
 
-    game.on('history', function(id, items) {
+    game.on('history', function (id, items) {
 
-        self.db.collection('history').insertOne({game: id, items: items.map(function(item) {
-            return {
-                name: item.name,
-                cost: item.cost,
-                image: item.getImageURL('full')
-            };
-        })}, {w: 1}, function(err) {
+        self.db.collection('history').insertOne({
+            game: id, items: items.map(function (item) {
+                return {
+                    name: item.name,
+                    cost: item.cost,
+                    image: item.getImageURL('full')
+                };
+            })
+        }, {w: 1}, function (err) {
             if (err) {
                 self.logger.error(err.stack || err);
                 self.terminate();

@@ -84,7 +84,7 @@ Game.createFromDB = function (data, callback, numRetries) {
             if (items.length > 0) {
                 var gameData = items[0];
                 var game = new Game(data.id, data.db, data.marketHelper, data.steamHelper, data.info, data.logger);
-                var resumeCallback = function () {
+                var resumeCallback = function (callback) {
                     game.resume({
                         startTime: gameData.startTime,
                         finishTime: gameData.finishTime,
@@ -95,7 +95,7 @@ Game.createFromDB = function (data, callback, numRetries) {
                         hash: gameData.hash,
                         state: gameData.state,
                         pauseTimer: data.pauseTimer
-                    });
+                    }, callback);
                 };
                 game.winner = gameData.winner;
                 game.currentBank = gameData.bank;
@@ -741,7 +741,7 @@ Game.prototype.update = function (callback) {
     });
 };
 
-Game.prototype.resume = function (data) {
+Game.prototype.resume = function (data, callback) {
     var self = this;
     self.state = data.state;
     self.sortBetsByPlayer(function () {
@@ -755,12 +755,14 @@ Game.prototype.resume = function (data) {
                                     var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
                                         self.info, self.logger);
                                     self.emit('newGame', newGame);
+                                    callback();
                                 });
                             } else {
                                 self.setState(State.SENT, function () {
                                     var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
                                         self.info, self.logger);
                                     self.emit('newGame', newGame);
+                                    callback();
                                 });
                             }
                         });
@@ -782,6 +784,7 @@ Game.prototype.resume = function (data) {
                                             var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
                                                 self.info, self.logger);
                                             self.emit('newGame', newGame);
+                                            callback();
                                         });
                                     });
                                 } else {
@@ -790,6 +793,7 @@ Game.prototype.resume = function (data) {
                                             var newGame = new Game(self.id + 1, self.db, self.marketHelper, self.steamHelper,
                                                 self.info, self.logger);
                                             self.emit('newGame', newGame);
+                                            callback();
                                         });
                                     });
                                 }
@@ -807,15 +811,17 @@ Game.prototype.resume = function (data) {
             self.startTime = data.startTime;
             if (self.state === State.PAUSED) {
                 self.gameTimer = data.pauseTimer;
+                callback();
             } else if (data.startTime > 0) {
                 if (Date.now() - data.startTime >= self.info.gameDuration * 1000) {
-                    self.roll();
+                    self.roll(callback);
                 } else {
                     self.gameTimer = Math.max(1, Number(((Date.now() - data.startTime) / 1000).toFixed(0)));
                     self.startTimer();
+                    callback();
                 }
             } else if (Object.keys(self.betsByPlayer).length >= 2) {
-                self.update();
+                self.update(callback);
             }
         }
     });
