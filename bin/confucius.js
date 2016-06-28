@@ -154,11 +154,18 @@ Confucius.prototype.start = function () {
                         self.setUpSocketListeners();
                         self.setUpGameListeners(self.currentGame);
                         if (resumeCallback)
-                            resumeCallback();
-                        self.checkEatenItems(function () {
-                            self.socketHandler.sendToAdmins('gameLoaded');
-                            self.steamHelper.startTradeOfferChecker();
-                        });
+                            resumeCallback(function() {
+                                self.checkEatenItems(function () {
+                                    self.socketHandler.sendToAdmins('gameLoaded');
+                                    self.steamHelper.startTradeOfferChecker();
+                                });
+                            });
+                       else {
+                            self.checkEatenItems(function () {
+                                self.socketHandler.sendToAdmins('gameLoaded');
+                                self.steamHelper.startTradeOfferChecker();
+                            });
+                        }
                     });
                 });
             });
