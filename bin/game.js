@@ -46,6 +46,7 @@ function Game(id, db, marketHelper, steamHelper, info, logger) {
     this.betsByPlayer = {};
     this.winner = null;
     this.pauseTimer = -1;
+    this.betsQueue = [];
     this.logger = logger ? logger : {
         error: function (msg) {
             console.log(msg);
@@ -155,7 +156,7 @@ Game.fixGameErrors = function (db, marketHelper, steamHelper, info, logger, call
     });
 };
 
-Game.prototype.addBet = function (better, items, totalCost, callback, numRetries) {
+Game.prototype.addBet = function (better, items, totalCost, isQueued, callback, numRetries) {
     var self = this;
     var itemsArray = [];
     var costFrom = self.currentBank + 1;
@@ -203,10 +204,15 @@ Game.prototype.addBet = function (better, items, totalCost, callback, numRetries
                     self.currentBank += totalCost;
                     self.numItems += itemsArray.length;
                     self.bets.push(bet);
-                    self.update(function () {
-                        self.emit('newBet', bet);
-                        callback();
-                    });
+                    if (isQueued) {
+                        self.betsQueue.push(bet);
+                    } else {
+                        self.update(function () {
+                            self.emit('newBet', bet);
+                            callback();
+                        });
+                    }
+
                 }
             });
     });
@@ -422,6 +428,7 @@ Game.prototype.roll = function (callback) {
                                         self.sendWonItems(wonItems, winner, token, function (offer, err) {
                                             self.setState(err ? State.ERROR : State.SENT, function () {
                                                 self.emit('saveGame', newGame);
+                                                newGame.processQueuedBets();
                                                 Game.fixGameErrors(self.db, self.marketHelper,
                                                     self.steamHelper, self.info, self.logger, callback);
                                             });
@@ -814,16 +821,30 @@ Game.prototype.resume = function (data) {
     });
 };
 
+Game.prototype.processQueuedBets = function() {
+    var self = this;
+    async.forEachOfSeries(self.betsQueue, function(bet, key, callback) {
+        self.update(function () {
+            self.emit('newBet', bet);
+            callback();
+        });
+    }, function() {
+        self.betsQueue = [];
+    });
+};
+
 Game.prototype.startTimer = function () {
     var self = this;
     if (self.state !== State.PAUSED) {
         self.setState(State.ACTIVE, function () {
             self.timerID = setInterval(function () {
-                self.gameTimer--;
-                self.emit('timerChanged', self.gameTimer);
-                if (self.gameTimer <= 0) {
-                    clearInterval(self.timerID);
-                    self.roll();
+                if (self.betsQueue.length === 0) {
+                    self.gameTimer--;
+                    self.emit('timerChanged', self.gameTimer);
+                    if (self.gameTimer <= 0) {
+                        clearInterval(self.timerID);
+                        self.roll();
+                    }
                 }
             }, 1000);
         });

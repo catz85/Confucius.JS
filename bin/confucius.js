@@ -584,7 +584,7 @@ Confucius.prototype.handleTradeOffer = function (offer) {
                                                                     self.logger.info('trade.accepted',
                                                                         {"%id%": offer.id},
                                                                         NotificationType.INFO);
-                                                                    self.currentGame.addBet(user, newItems, totalCost, function () {
+                                                                    self.currentGame.addBet(user, newItems, totalCost, self.rollStartTime > 0, function () {
 
                                                                     });
                                                                 });
