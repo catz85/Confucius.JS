@@ -417,6 +417,7 @@ Game.prototype.roll = function (callback) {
                                     chance: Number(self.betsByPlayer[winnerID].chance)
                                 });
                                 self.submit(winner, Number(self.betsByPlayer[winnerID].chance), function () {
+                                    self.emit('history', self.id, wonItems);
                                     self.setState(State.SENDING, function () {
                                         self.sendWonItems(wonItems, winner, token, function (offer, err) {
                                             self.setState(err ? State.ERROR : State.SENT, function () {
@@ -511,6 +512,7 @@ Game.prototype.sortWonItems = function (user, callback) {
                             feeSize -= item.cost;
                             feeItems++;
                         } else {
+                            inventoryItem.cost = item.cost;
                             itemsToSend.push(inventoryItem);
                         }
                         cb();

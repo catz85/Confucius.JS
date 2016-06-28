@@ -338,6 +338,22 @@ Confucius.prototype.setUpGameListeners = function (game) {
         self.socketHandler.send('updateStats', stats);
     });
 
+    game.on('history', function(id, items) {
+
+        self.db.collection('history').insertOne({game: id, items: items.map(function(item) {
+            return {
+                name: item.name,
+                cost: item.cost,
+                image: item.getImageURL('full')
+            };
+        })}, {w: 1}, function(err) {
+            if (err) {
+                self.logger.error(err.stack || err);
+                self.terminate();
+            }
+        });
+    });
+
     game.on('updated', function () {
         self.socketHandler.adminClients.forEach(function (socket) {
             self.sendStatus(socket);
