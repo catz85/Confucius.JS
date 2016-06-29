@@ -15,9 +15,6 @@ function SocketHandler(port) {
     this.steamIDByClients = {};
     this.adminListeners = [];
     var self = this;
-    setInterval(function () {
-        self.removeDeadSockets();
-    }, 5000);
 }
 
 SocketHandler.prototype.removeDeadSockets = function() {
@@ -39,7 +36,7 @@ SocketHandler.prototype.removeDeadSockets = function() {
                 }
                 self.io.emit('online', Object.keys(self.clients).length);
             } catch (err) {
-                self.logger.error(err.stack || err);
+                console.log(err);
             }
             callback();
         }
@@ -114,6 +111,9 @@ SocketHandler.prototype.setUpListeners = function () {
         }
 
     });
+    setInterval(function () {
+        self.removeDeadSockets();
+    }, 5000);
 };
 
 SocketHandler.prototype.addEventListener = function (event, listener) {
