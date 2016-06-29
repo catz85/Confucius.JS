@@ -22,17 +22,17 @@ SocketHandler.prototype.removeDeadSockets = function() {
     async.forEachOfSeries(self.clients, function(socket, key, callback) {
         if (!socket.connected) {
             try {
-                self.clients[socket.handshake.address].splice(self.clients[socket.handshake.address].indexOf(socket), 1);
-                if (self.clients[socket.handshake.address].length === 0) {
-                    delete self.clients[socket.handshake.address];
+                self.clients[key].splice(self.clients[key].indexOf(socket), 1);
+                if (self.clients[key].length === 0) {
+                    delete self.clients[key];
                 }
-                if (self.steamIDByClients[socket.handshake.address]) {
-                    var steamID = self.steamIDByClients[socket.handshake.address];
+                if (self.steamIDByClients[key]) {
+                    var steamID = self.steamIDByClients[key];
                     self.clientsBySteamID[steamID].splice(self.clientsBySteamID[steamID].indexOf(socket), 1);
                     if (self.clientsBySteamID[steamID].length === 0) {
                         delete self.clientsBySteamID[steamID];
                     }
-                    delete self.steamIDByClients[socket.handshake.address];
+                    delete self.steamIDByClients[key];
                 }
                 self.io.emit('online', Object.keys(self.clients).length);
             } catch (err) {
