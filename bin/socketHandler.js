@@ -14,7 +14,37 @@ function SocketHandler(port) {
     this.clientsBySteamID = {};
     this.steamIDByClients = {};
     this.adminListeners = [];
+    var self = this;
+    setInterval(function () {
+        self.removeDeadSockets();
+    }, 5000);
 }
+
+SocketHandler.prototype.removeDeadSockets = function() {
+    var self = this;
+    async.forEachOfSeries(self.clients, function(socket, key, callback) {
+        if (!socket.connected) {
+            try {
+                self.clients[socket.handshake.address].splice(self.clients[socket.handshake.address].indexOf(socket), 1);
+                if (self.clients[socket.handshake.address].length === 0) {
+                    delete self.clients[socket.handshake.address];
+                }
+                if (self.steamIDByClients[socket.handshake.address]) {
+                    var steamID = self.steamIDByClients[socket.handshake.address];
+                    self.clientsBySteamID[steamID].splice(self.clientsBySteamID[steamID].indexOf(socket), 1);
+                    if (self.clientsBySteamID[steamID].length === 0) {
+                        delete self.clientsBySteamID[steamID];
+                    }
+                    delete self.steamIDByClients[socket.handshake.address];
+                }
+                self.io.emit('online', Object.keys(self.clients).length);
+            } catch (err) {
+                self.logger.error(err.stack || err);
+            }
+            callback();
+        }
+    });
+};
 
 SocketHandler.prototype.setUpListeners = function () {
     var self = this;
