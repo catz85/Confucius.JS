@@ -157,14 +157,14 @@ Confucius.prototype.start = function () {
                             resumeCallback(function () {
                                 self.checkEatenItems(function () {
                                     self.socketHandler.sendToAdmins('gameLoaded');
-                                    self.steamHelper.startTradeOfferChecker();
+                                    self.steamHelper.forceCheckTradeOffers();
                                 });
                             });
                         }
                         else {
                             self.checkEatenItems(function () {
                                 self.socketHandler.sendToAdmins('gameLoaded');
-                                self.steamHelper.startTradeOfferChecker();
+                                self.steamHelper.forceCheckTradeOffers();
                             });
                         }
                     });
@@ -551,7 +551,7 @@ Confucius.prototype.steamLogon = function (callback) {
             self.terminate();
         });
 
-        self.steamHelper.on('forceOffer', function (offer) {
+        self.steamHelper.on('newOffer', function (offer) {
             self.handleTradeOffer(offer);
         });
 

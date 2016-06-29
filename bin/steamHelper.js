@@ -16,7 +16,7 @@ util.inherits(SteamHelper, events.EventEmitter);
 const MAX_RETRIES = 5;
 const RETRY_INTERVAL = 3000;
 
-const POLL_INTERVAL = 10000;
+const POLL_DATA_FILE = './pollData.dat';
 
 function SteamHelper(accountDetails, marketHelper, logger) {
     this.steamUser = new SteamUser();
@@ -38,6 +38,10 @@ function SteamHelper(accountDetails, marketHelper, logger) {
             return msg;
         }
     };
+    this.pollData = null;
+    if (fs.existsSync(POLL_DATA_FILE)) {
+        this.pollData = fs.readFileSync(POLL_DATA_FILE, 'utf-8');
+    }
     this.loggedIn = false;
     this.tempData = {};
     this.setUpListeners();
@@ -109,7 +113,8 @@ SteamHelper.prototype.setUpListeners = function () {
                 "community": self.steamCommunity,
                 "domain": self.accountDetails['domain'],
                 "language": 'en',
-                "pollInterval": -1
+                "cancelTime": 60 * 60 * 1000,
+                "pollData": self.pollData
             });
         }
 
@@ -124,9 +129,16 @@ SteamHelper.prototype.setUpListeners = function () {
                 if (!self.loggedIn) {
                     self.loggedIn = true;
                 } else {
-                    self.tradeOfferManager.on('newOffer', function(offer) {
-                        console.log('new offer!');
+
+                    self.tradeOfferManager.on('pollData', function (data) {
+                        self.pollData = data;
+                        fs.writeFileSync(POLL_DATA_FILE);
                     });
+
+                    self.tradeOfferManager.on('newOffer', function (offer) {
+                        self.emit('newOffer', offer);
+                    });
+
                     self.steamCommunity.startConfirmationChecker(30000, self.accountDetails['identitySecret']);
                     self.steamCommunity.on('sessionExpired', function (err) {
                         self.logger.error('steam.error.expired');
@@ -149,13 +161,6 @@ SteamHelper.prototype.setUpListeners = function () {
         });
 
     });
-};
-
-SteamHelper.prototype.startTradeOfferChecker = function() {
-    var self = this;
-    setInterval(function() {
-        self.forceCheckTradeOffers();
-    }, POLL_INTERVAL);
 };
 
 SteamHelper.prototype.sendItems = function (user, token, items, msg, callback, numRetries) {
@@ -213,23 +218,8 @@ SteamHelper.prototype.getTradeOffers = function (filter, callback, numRetries) {
     });
 };
 
-SteamHelper.prototype.forceCheckTradeOffers = function (callback) {
-    var self = this;
-    if (!callback)
-        callback = function () {
-
-        };
-    self.getTradeOffers(1, function (sentOffers, receivedOffers) {
-        console.log(receivedOffers.length);
-        async.forEachOfSeries(receivedOffers, function (offer, key, cb) {
-            if (offer.state === 2) {
-                self.emit('forceOffer', offer);
-            }
-            cb();
-        }, function () {
-            callback();
-        });
-    });
+SteamHelper.prototype.forceCheckTradeOffers = function () {
+    this.tradeOfferManager.doPoll();
 };
 
 SteamHelper.prototype.getActiveSentTrades = function (callback) {
