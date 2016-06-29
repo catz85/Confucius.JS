@@ -389,7 +389,8 @@ Confucius.prototype.setUpGameListeners = function (game) {
             bet);
     });
 
-    game.on('stateChanged', function () {
+    game.on('stateChanged', function (state) {
+        self.socketHandler.send('gameStatus', game.id, state);
         self.socketHandler.adminClients.forEach(function (socket) {
             self.sendStatus(socket);
         });

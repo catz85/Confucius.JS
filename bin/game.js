@@ -283,7 +283,7 @@ Game.prototype.setState = function (newState, callback, numRetries) {
                     "%state2%": Object.keys(State)[newState]
                 }, NotificationType.INFO);
                 self.state = newState;
-                self.emit('stateChanged');
+                self.emit('stateChanged', newState);
                 if (callback)
                     callback();
             }

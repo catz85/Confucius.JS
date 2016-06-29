@@ -36,7 +36,7 @@ SocketHandler.prototype.setUpListeners = function () {
             }
             self.io.emit('online', Object.keys(self.clients).length);
         });
-        
+
         socket.once('steamAuth', function (steamID) {
             if (!self.clientsBySteamID[steamID]) {
                 self.clientsBySteamID[steamID] = [];
