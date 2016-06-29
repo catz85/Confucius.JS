@@ -14,39 +14,29 @@ function SocketHandler(port) {
     this.clientsBySteamID = {};
     this.steamIDByClients = {};
     this.adminListeners = [];
-    var self = this;
 }
-
-SocketHandler.prototype.removeDeadSockets = function() {
-    var self = this;
-    async.forEachOfSeries(self.clients, function(socket, key, callback) {
-        if (!socket.connected) {
-            try {
-                self.clients[key].splice(self.clients[key].indexOf(socket), 1);
-                if (self.clients[key].length === 0) {
-                    delete self.clients[key];
-                }
-                if (self.steamIDByClients[key]) {
-                    var steamID = self.steamIDByClients[key];
-                    self.clientsBySteamID[steamID].splice(self.clientsBySteamID[steamID].indexOf(socket), 1);
-                    if (self.clientsBySteamID[steamID].length === 0) {
-                        delete self.clientsBySteamID[steamID];
-                    }
-                    delete self.steamIDByClients[key];
-                }
-                self.io.emit('online', Object.keys(self.clients).length);
-            } catch (err) {
-                console.log(err);
-            }
-            callback();
-        }
-    });
-};
 
 SocketHandler.prototype.setUpListeners = function () {
     var self = this;
 
     self.io.on('connection', function (socket) {
+
+        socket.once('disconnect', function () {
+            self.clients[socket.handshake.address].splice(self.clients[socket.handshake.address].indexOf(socket), 1);
+            if (self.clients[socket.handshake.address].length === 0) {
+                delete self.clients[socket.handshake.address];
+            }
+            if (self.steamIDByClients[socket.handshake.address]) {
+                var steamID = self.steamIDByClients[socket.handshake.address];
+                self.clientsBySteamID[steamID].splice(self.clientsBySteamID[steamID].indexOf(socket), 1);
+                if (self.clientsBySteamID[steamID].length === 0) {
+                    delete self.clientsBySteamID[steamID];
+                }
+                delete self.steamIDByClients[socket.handshake.address];
+            }
+            self.io.emit('online', Object.keys(self.clients).length);
+        });
+        
         socket.once('steamAuth', function (steamID) {
             if (!self.clientsBySteamID[steamID]) {
                 self.clientsBySteamID[steamID] = [];
@@ -92,28 +82,9 @@ SocketHandler.prototype.setUpListeners = function () {
             }
 
             self.io.emit('online', Object.keys(self.clients).length);
-
-            socket.once('disconnect', function () {
-                self.clients[socket.handshake.address].splice(self.clients[socket.handshake.address].indexOf(socket), 1);
-                if (self.clients[socket.handshake.address].length === 0) {
-                    delete self.clients[socket.handshake.address];
-                }
-                if (self.steamIDByClients[socket.handshake.address]) {
-                    var steamID = self.steamIDByClients[socket.handshake.address];
-                    self.clientsBySteamID[steamID].splice(self.clientsBySteamID[steamID].indexOf(socket), 1);
-                    if (self.clientsBySteamID[steamID].length === 0) {
-                        delete self.clientsBySteamID[steamID];
-                    }
-                    delete self.steamIDByClients[socket.handshake.address];
-                }
-                self.io.emit('online', Object.keys(self.clients).length);
-            });
         }
 
     });
-    setInterval(function () {
-        self.removeDeadSockets();
-    }, 5000);
 };
 
 SocketHandler.prototype.addEventListener = function (event, listener) {
